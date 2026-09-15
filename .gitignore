@@ -1,0 +1,21 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Configuracion local con secretos reales
+.env
+.env.*
+!.env.example
+
+# Base SQLite y artefactos generados (PDFs, informes)
+data/
+
+# Credenciales reales capturadas por los spikes
+spikes/.out/
+
+# Editores y SO
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

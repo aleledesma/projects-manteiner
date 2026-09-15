@@ -1,0 +1,78 @@
+# Manteiner
+
+Conecta repositorios de GitHub y ejecuta **agentes de IA de mantenimiento** sobre ellos dentro
+de contenedores efímeros de Docker. El agente audita el repo, abre un PR con actualizaciones
+seguras, devuelve un informe estructurado y genera un PDF, mostrando el progreso en tiempo real.
+
+📚 **La planificación completa está en [`docs/`](./docs/README.md).** Empezá por
+[00 — Visión](./docs/00-vision.md) y [01 — Arquitectura](./docs/01-arquitectura.md).
+
+## Estado
+
+👉 **Para retomar el trabajo, leé [`docs/14-estado-actual.md`](./docs/14-estado-actual.md).**
+
+| Fase | Estado |
+|------|--------|
+| 0 — Verificación técnica | ✅ cerrada ([hallazgos](./docs/13-hallazgos-spike.md)) |
+| 1 — Esqueleto y persistencia | 🚧 70% — API y contratos listos y verificados contra opencode real. **Falta SQLite y el cifrado.** |
+| 2 a 9 | 🔲 pendientes ([roadmap](./docs/11-roadmap.md)) |
+
+57 tests pasando · typecheck limpio · el contrato del agente ya fue aceptado por opencode.
+
+## Requisitos
+
+- **Node.js 22.6+** (usamos `--env-file` y el test runner nativo)
+- **Docker** (a partir de la Fase 3)
+
+## Puesta en marcha
+
+```bash
+npm install
+
+cp .env.example .env
+# Genera los dos secretos obligatorios:
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# pegalos en MASTER_KEY y SESSION_SECRET
+
+npm run dev
+```
+
+La API queda en <http://localhost:3001>. Probá:
+
+```bash
+curl http://localhost:3001/api/health
+```
+
+Si falta `MASTER_KEY` o `SESSION_SECRET`, **la API no arranca** y te dice exactamente qué falta.
+Es deliberado: mejor caer con un mensaje claro que correr sin cifrado.
+
+## Comandos
+
+| Comando | Qué hace |
+|---------|----------|
+| `npm run dev` | API en modo watch |
+| `npm test` | Tests de todos los workspaces |
+| `npm run typecheck` | `tsc --noEmit` en todos los workspaces |
+| `npm run print-schema --workspace @manteiner/contracts` | Imprime el JSON Schema del informe |
+
+## Estructura
+
+```
+apps/
+  api/                 Fastify + orquestador + SQLite
+packages/
+  contracts/           Contrato del agente: Zod, JSON Schema y prompts versionados
+docs/                  Planificación y decisiones
+spikes/                Scripts descartables de verificación (Fase 0)
+```
+
+`packages/contracts` es la pieza central: define **una sola vez** la forma del informe que
+devuelve el agente, y de ahí salen el JSON Schema que restringe al modelo, la validación en el
+host y los tipos del frontend. No se pueden desincronizar.
+
+## Cómo se toman las decisiones acá
+
+Todo lo decidido —y lo descartado, con su motivo— vive en
+[`docs/12-decisiones-abiertas.md`](./docs/12-decisiones-abiertas.md). Las revisiones registran
+el planteo original, la objeción y la resolución: saber por qué **no** se hizo algo vale tanto
+como saber qué se hizo.

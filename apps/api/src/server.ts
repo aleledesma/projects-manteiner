@@ -1,0 +1,61 @@
+/**
+ * Construccion de la app Fastify.
+ *
+ * `buildServer` no escucha en ningun puerto: devuelve la instancia lista. Eso
+ * permite que los tests la levanten con `app.inject()` sin abrir sockets.
+ * El `listen` vive en index.ts.
+ */
+
+import Fastify, { type FastifyInstance } from "fastify";
+
+import type { Config } from "./config.ts";
+import { registerErrorHandler } from "./errors.ts";
+import { healthRoutes } from "./routes/health.ts";
+
+export function buildServer(config: Config): FastifyInstance {
+  const app = Fastify({
+    logger: {
+      level: config.LOG_LEVEL,
+      // En desarrollo, salida legible. En produccion, JSON para que lo coma un colector.
+      ...(config.isProduction
+        ? {}
+        : { transport: { target: "pino-pretty", options: { translateTime: "HH:MM:ss", ignore: "pid,hostname" } } }),
+      // Primera capa de redaccion de secretos (doc 10). La redaccion por patron
+      // (sk-*, ghp_*, JWT) llega en la Fase 9; esto cubre lo obvio desde el dia uno.
+      redact: {
+        paths: [
+          "req.headers.authorization",
+          "req.headers.cookie",
+          "res.headers['set-cookie']",
+          "*.api_key",
+          "*.apiKey",
+          "*.access",
+          "*.refresh",
+          "*.token",
+          "*.MASTER_KEY",
+          "*.SESSION_SECRET",
+        ],
+        censor: "[REDACTADO]",
+      },
+    },
+    // No confiar en X-Forwarded-* salvo detras de un proxy propio.
+    trustProxy: false,
+    // Nota: no usamos `disableRequestLogging` (deprecado en Fastify 5.12) ni
+    // `logController` (exige implementar la interfaz entera). Para callar la
+    // salida en tests alcanza con LOG_LEVEL=silent, que es lo que hacen.
+  });
+
+  app.decorate("config", config);
+
+  registerErrorHandler(app);
+
+  app.register(healthRoutes, { prefix: "/api" });
+
+  return app;
+}
+
+declare module "fastify" {
+  interface FastifyInstance {
+    config: Config;
+  }
+}

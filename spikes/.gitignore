@@ -1,0 +1,4 @@
+node_modules/
+
+# Credenciales reales del usuario. NUNCA se versionan.
+.out/

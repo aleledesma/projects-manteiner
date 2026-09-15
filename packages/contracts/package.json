@@ -1,0 +1,18 @@
+{
+  "name": "@manteiner/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Contrato de salida del agente: Zod, JSON Schema derivado y prompts versionados",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "print-schema": "tsx src/bin/print-schema.ts"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  }
+}
