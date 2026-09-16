@@ -180,7 +180,7 @@ hace `docker rm` de los contenedores etiquetados `manteiner.run=*` que hayan que
 | `MASTER_KEY` | Clave de 32 bytes (base64) para cifrar credenciales. Ver [10](./10-seguridad.md). |
 | `SESSION_SECRET` | Firma cookies y protege los artefactos internos de Better Auth. |
 | `GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | Login de usuarios. |
-| `GITHUB_APP_ID` / `_PRIVATE_KEY` / `_WEBHOOK_SECRET` | GitHub App para acceso a repos. |
+| `GITHUB_APP_ID`, `_SLUG`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_PRIVATE_KEY_BASE64` | GitHub App para acceso a repos. |
 | `DOCKER_SOCKET` | Default `/var/run/docker.sock` (o named pipe en Windows). |
 | `AGENT_IMAGE`, `GIT_IMAGE` | Tags de las dos imágenes, ej. `manteiner-agent:0.1.0`. |
 | `WORKSPACE_BACKEND` | `disk` (default) o `tmpfs`. Ver [05](./05-ejecucion-en-docker.md). |

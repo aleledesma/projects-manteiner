@@ -6,6 +6,8 @@
  * a medias, que falla mucho mas tarde y mucho peor.
  */
 
+import { createPrivateKey } from "node:crypto";
+
 import { z } from "zod";
 
 /** 32 bytes exactos en base64: es la clave de AES-256-GCM. */
@@ -22,6 +24,19 @@ const masterKey = z
     },
     { message: "debe ser exactamente 32 bytes codificados en base64" },
   );
+
+const githubAppPrivateKey = z.string().refine(
+  (value) => {
+    try {
+      const decoded = Buffer.from(value, "base64");
+      if (decoded.toString("base64") !== value) return false;
+      return createPrivateKey(decoded).asymmetricKeyType === "rsa";
+    } catch {
+      return false;
+    }
+  },
+  { message: "debe ser una private key RSA PEM codificada en base64" },
+);
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -40,6 +55,11 @@ const envSchema = z.object({
   SESSION_SECRET: z.string().min(32, "debe tener al menos 32 caracteres"),
   GITHUB_OAUTH_CLIENT_ID: z.string().min(1, "es obligatorio"),
   GITHUB_OAUTH_CLIENT_SECRET: z.string().min(1, "es obligatorio"),
+  GITHUB_APP_ID: z.string().regex(/^\d+$/, "debe ser numerico"),
+  GITHUB_APP_SLUG: z.string().regex(/^[a-z0-9-]+$/, "debe ser un slug valido"),
+  GITHUB_APP_CLIENT_ID: z.string().min(1, "es obligatorio"),
+  GITHUB_APP_CLIENT_SECRET: z.string().min(1, "es obligatorio"),
+  GITHUB_APP_PRIVATE_KEY_BASE64: githubAppPrivateKey,
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === "production" && new URL(env.PUBLIC_URL).origin !== new URL(env.WEB_URL).origin) {
     ctx.addIssue({
@@ -89,4 +109,8 @@ export class ConfigError extends Error {
 /** La clave maestra ya decodificada. Se deriva aca para no repetir el Buffer.from. */
 export function masterKeyBytes(config: Config): Buffer {
   return Buffer.from(config.MASTER_KEY, "base64");
+}
+
+export function githubAppPrivateKeyBytes(config: Config): Buffer {
+  return Buffer.from(config.GITHUB_APP_PRIVATE_KEY_BASE64, "base64");
 }

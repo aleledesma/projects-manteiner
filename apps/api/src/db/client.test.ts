@@ -40,7 +40,9 @@ describe("openDatabase", () => {
       [
         "__drizzle_migrations",
         "accounts",
+        "github_install_states",
         "github_installations",
+        "github_user_installations",
         "provider_credentials",
         "repositories",
         "run_artifacts",
@@ -75,7 +77,7 @@ describe("openDatabase", () => {
     const migrations = second.sqlite
       .prepare("SELECT count(*) AS count FROM __drizzle_migrations")
       .get() as { count: number };
-    assert.equal(migrations.count, 2);
+    assert.equal(migrations.count, 3);
   });
 
   it("migra usuarios previos, vincula GitHub y normaliza emails duplicados", () => {
@@ -102,6 +104,20 @@ describe("openDatabase", () => {
     );
     insertUser.run("user-1", 1, "octocat", "Octocat", "Same@Example.com", 1, 1);
     insertUser.run("user-2", 2, "monalisa", "Mona Lisa", "same@example.com", 1, 1);
+    legacy
+      .prepare(
+        `INSERT INTO github_installations
+          (id, user_id, installation_id, account_login, account_type, repository_selection, created_at, updated_at)
+         VALUES ('installation-1', 'user-1', 777, 'octocat', 'User', 'selected', 1, 1)`,
+      )
+      .run();
+    legacy
+      .prepare(
+        `INSERT INTO repositories
+          (id, user_id, installation_id, github_repo_id, owner, name, full_name, default_branch, html_url, linked_at)
+         VALUES ('repo-1', 'user-1', 'installation-1', 999, 'octocat', 'hello-world', 'octocat/hello-world', 'main', 'https://github.com/octocat/hello-world', 1)`,
+      )
+      .run();
     legacy.close();
 
     const connection = openDatabase(path);
@@ -116,6 +132,17 @@ describe("openDatabase", () => {
     ]);
     const emails = connection.sqlite.prepare("SELECT email FROM users ORDER BY id").all();
     assert.deepEqual(emails, [{ email: "same@example.com" }, { email: null }]);
+    const installationUsers = connection.sqlite
+      .prepare("SELECT user_id, installation_id FROM github_user_installations")
+      .all();
+    assert.deepEqual(installationUsers, [
+      { user_id: "user-1", installation_id: "installation-1" },
+    ]);
+    const repository = connection.sqlite
+      .prepare("SELECT installation_id FROM repositories WHERE id = 'repo-1'")
+      .get();
+    assert.deepEqual(repository, { installation_id: "installation-1" });
+    assert.deepEqual(connection.sqlite.pragma("foreign_key_check"), []);
   });
 
   it("hace cumplir las foreign keys", () => {

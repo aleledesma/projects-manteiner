@@ -74,13 +74,23 @@ export const verifications = sqliteTable(
   (table) => [index("idx_verifications_identifier").on(table.identifier)],
 );
 
-export const githubInstallations = sqliteTable(
-  "github_installations",
+export const githubInstallStates = sqliteTable(
+  "github_install_states",
   {
     id: text("id").primaryKey(),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("idx_github_install_states_expires").on(table.expiresAt)],
+);
+
+export const githubInstallations = sqliteTable(
+  "github_installations",
+  {
+    id: text("id").primaryKey(),
     installationId: integer("installation_id").notNull().unique(),
     accountLogin: text("account_login").notNull(),
     accountType: text("account_type", { enum: ["User", "Organization"] }).notNull(),
@@ -89,7 +99,26 @@ export const githubInstallations = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (table) => [index("idx_github_installations_user").on(table.userId)],
+  (table) => [index("idx_github_installations_account").on(table.accountLogin)],
+);
+
+export const githubUserInstallations = sqliteTable(
+  "github_user_installations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    installationId: text("installation_id")
+      .notNull()
+      .references(() => githubInstallations.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_github_user_installations_pair").on(table.userId, table.installationId),
+    index("idx_github_user_installations_user").on(table.userId),
+  ],
 );
 
 export const repositories = sqliteTable(

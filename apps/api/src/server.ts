@@ -12,14 +12,17 @@ import { masterKeyBytes, type Config } from "./config.ts";
 import { openDatabase, type AppDatabase, type DatabaseConnection } from "./db/client.ts";
 import { registerErrorHandler } from "./errors.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { githubRoutes } from "./routes/github.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { createAuth, type AppAuth } from "./services/auth.ts";
 import { CredentialCrypto } from "./services/credential-crypto.ts";
+import { GithubAppService } from "./services/github-app.ts";
 
 export function buildServer(config: Config): FastifyInstance {
   const database = openDatabase(config.DATABASE_PATH);
   const credentialCrypto = new CredentialCrypto(masterKeyBytes(config));
   const auth = createAuth(config, database.db);
+  const githubApp = new GithubAppService(config);
   const app = Fastify({
     logger: {
       level: config.LOG_LEVEL,
@@ -57,12 +60,14 @@ export function buildServer(config: Config): FastifyInstance {
   app.decorate("database", database);
   app.decorate("credentialCrypto", credentialCrypto);
   app.decorate("auth", auth);
+  app.decorate("githubApp", githubApp);
   app.addHook("onClose", () => database.close());
 
   registerErrorHandler(app);
 
   app.register(healthRoutes, { prefix: "/api" });
   authRoutes(app);
+  githubRoutes(app);
 
   return app;
 }
@@ -74,5 +79,6 @@ declare module "fastify" {
     database: DatabaseConnection;
     credentialCrypto: CredentialCrypto;
     auth: AppAuth;
+    githubApp: GithubAppService;
   }
 }

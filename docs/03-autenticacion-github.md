@@ -61,6 +61,7 @@ Detalles que importan:
 | `metadata` | Read | Obligatorio; listar repos y su metadata. |
 | `contents` | **Read & Write** | Leer el código *y* poder crear la rama del PR. |
 | `pull_requests` | **Read & Write** | Crear el PR y su descripción. |
+| `members` (organización) | Read | Confirmar que quien vincula una instalación organizacional sea administrador. |
 
 ### Nota importante sobre "solo lectura + PRs"
 
@@ -88,13 +89,26 @@ principal y nunca hace merge."*
 ### Instalación
 
 ```
-1. El usuario hace click en "Conectar repositorios"
-2. -> https://github.com/apps/<app-slug>/installations/new?state=<state-firmado>
-3. El usuario elige la cuenta y los repos (selected, no "all")
-4. Callback: GET /api/github/setup?installation_id=...&setup_action=install&state=...
-   -> valida state, asocia installation_id al user_id
-   -> lista repos de la instalacion y los guarda en `repositories`
+1. GET /api/github/install-url
+   -> crea un `state` aleatorio, guarda solo su hash y devuelve la URL de instalación
+2. El usuario elige la cuenta y los repos en GitHub
+3. GitHub redirige a:
+   GET /api/github/setup?installation_id=...&setup_action=install&code=...&state=...
+4. El backend consume el `state` de un solo uso e intercambia `code` por un token de usuario
+5. Verifica que el token pertenezca a la misma identidad GitHub de la sesión
+6. Exige que sea dueño de la cuenta personal o admin de la organización de la instalación
+7. Consulta la instalación como GitHub App y crea la relación usuario-instalación
+8. Revoca el token temporal; si no puede revocarlo, el callback falla
+9. GET /api/github/available-repos lista los repos autorizados todavía no vinculados
+10. POST /api/repos { githubRepoId } vincula el repositorio elegido
 ```
+
+🟢 Ni el token de usuario temporal ni el installation token se persisten. Los estados de
+instalación expiran a los 10 minutos, se almacenan hasheados y se consumen una sola vez.
+
+🟢 Una instalación es global y puede relacionarse con varios usuarios. Cada usuario conserva
+su propia lista de repos vinculados y sus propios runs. Esto permite compartir una instalación
+organizacional sin permitir que un miembro común reclame todos los repos de la organización.
 
 ### Webhooks — 🟡 propuesto
 
@@ -124,10 +138,16 @@ carga del dashboard. Funciona, pero deja estado obsoleto si alguien revoca desde
 repositorio* y a los permisos mínimos de la operación. Un token de instalación sin
 restringir puede tocar todos los repos de la instalación.
 
+Hay una excepción deliberada: para `GET /api/github/available-repos` se crea un token de
+descubrimiento con solo `metadata: read`, porque debe enumerar todos los repos autorizados de
+la instalación. Se cachea en memoria por `installation_id` hasta cinco minutos antes de su
+expiración. No permite leer contenido ni escribir repositorios.
+
 🟢 El token se genera al inicio del run, se usa para clonar y para crear el PR, y **no se
 persiste**. Si el run dura más de una hora se regenera antes del push.
 
-🟡 Cachear el token en memoria por `installation_id + repo` con TTL de 50 minutos.
+🟡 Los futuros tokens de clon y publicación se cachearán por `installation_id + repo` con TTL
+de 50 minutos. Ese trabajo empieza con el bloque de clonado/Docker.
 
 ### Dónde se usa el token
 

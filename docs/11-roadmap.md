@@ -76,24 +76,26 @@ contrato del agente es viable tal como está escrito.
 
 ---
 
-## Fase 2 — Autenticación 🟡 IMPLEMENTADA, PENDIENTE DE SMOKE TEST REAL
+## Fase 2 — Autenticación ✅ CERRADA
 
 - [x] OAuth de GitHub con Better Auth, `state`, PKCE y cookie firmada.
 - [x] `users`, `sessions`, `accounts` y `verifications` en SQLite mediante Drizzle.
 - [x] `GET /api/me` con estado de onboarding.
-- [x] Web mínima sin estilos: login, usuario actual y logout.
-- [ ] Smoke test completo contra una OAuth App real de GitHub.
+- [x] Web de login, sesión actual y logout.
+- [x] Smoke test completo contra una OAuth App real de GitHub.
 
 **Entregable:** se puede iniciar y cerrar sesión con GitHub.
 
 ---
 
-## Fase 3 — GitHub App y repositorios
+## Fase 3 — GitHub App y repositorios 🟡 EN PROGRESO
 
-- [ ] Crear la GitHub App (manifest) y documentar los permisos.
-- [ ] Flujo de instalación + callback `/api/github/setup`.
-- [ ] Generación de installation tokens restringidos por repo, con caché en memoria.
-- [ ] `GET /api/github/available-repos`, `POST /api/repos`, `GET /api/repos`.
+- [x] Documentar la configuración manual y los permisos de la GitHub App.
+- [x] Flujo de instalación + callback `/api/github/setup`.
+- [x] Token de instalación `metadata: read` con caché en memoria para listar repos.
+- [x] `GET /api/github/available-repos`, `POST /api/repos`, `GET /api/repos`.
+- [x] Smoke test completo contra una GitHub App real: instalación, listado y vinculación.
+- [ ] Tokens restringidos por repo para clonado y publicación.
 - [ ] Imagen `manteiner-git` + `clone.sh`, con el token por stdin y limpieza del remote.
 - [ ] Chequeo de tamaño del repo previo al clon; creación y destrucción del volumen.
 - [ ] Webhooks con verificación de firma (o sincronización on-demand si se pospone).

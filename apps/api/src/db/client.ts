@@ -30,11 +30,17 @@ export function openDatabase(databasePath: string): DatabaseConnection {
 
   try {
     sqlite.pragma("journal_mode = WAL");
-    sqlite.pragma("foreign_keys = ON");
     sqlite.pragma("busy_timeout = 5000");
 
     const db = drizzle(sqlite, { schema });
+    // Drizzle rebuilds SQLite tables inside a transaction, where changing this PRAGMA has no effect.
+    sqlite.pragma("foreign_keys = OFF");
     migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+    sqlite.pragma("foreign_keys = ON");
+    const foreignKeyViolations = sqlite.pragma("foreign_key_check") as unknown[];
+    if (foreignKeyViolations.length > 0) {
+      throw new Error("Las migraciones dejaron referencias invalidas en la base de datos.");
+    }
 
     return {
       db,

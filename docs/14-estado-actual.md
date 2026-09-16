@@ -7,8 +7,9 @@ primero para retomar el trabajo.
 
 ## Resumen en una línea
 
-Fases 0 y 1 cerradas y Fase 2 implementada: Better Auth administra GitHub OAuth y sesiones sobre
-SQLite, y existe una web funcional sin estilos. Falta el smoke test con una OAuth App real.
+Fases 0, 1 y 2 cerradas. En Fase 3 funcionan y fueron verificados contra GitHub real el callback
+de la GitHub App, el listado de repos autorizados y su vinculación; todavía no se implementaron
+clonado, Docker ni webhooks.
 
 ## Qué está hecho y funcionando
 
@@ -17,29 +18,30 @@ SQLite, y existe una web funcional sin estilos. Falta el smoke test con una OAut
 | Planificación completa (docs 00-13) | ✅ | 5 revisiones registradas |
 | Fase 0 — spikes de verificación | ✅ cerrada | [13](./13-hallazgos-spike.md) |
 | Monorepo npm workspaces | ✅ | `apps/api`, `apps/web`, `packages/contracts`, `spikes` |
-| API Fastify + config + errores + logging + SQLite + cifrado + auth | ✅ | 35 tests |
+| API Fastify + config + errores + logging + SQLite + cifrado + auth | ✅ | 37 tests |
 | `packages/contracts` | ✅ | 50 tests |
 | Contrato base verificado contra opencode real | ✅ | I5 cerrado; hardening posterior cubierto localmente |
-| Base de datos SQLite | ✅ | 13 tablas + 2 migraciones |
+| Base de datos SQLite | ✅ | 15 tablas + 3 migraciones |
 | Cifrado AES-256-GCM | ✅ | IV aleatorio + AAD + 10 tests específicos |
-| Fase 2 — Better Auth + web mínima | 🟡 | Implementada; pendiente smoke test real |
-| Fases 3 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
+| Fase 2 — Better Auth + web mínima | ✅ cerrada | Smoke test real completado |
+| Fase 3 — GitHub App y repositorios | 🟡 | Instalación/listado/vinculación verificados contra GitHub real |
+| Fases 4 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 
 ```bash
-npm install && npm test        # 85/85
+npm install && npm test        # 87/87
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
 ## Lo que sigue, en orden
 
-### Cerrar Fase 2 — smoke test de GitHub OAuth
+### Continuar Fase 3 — base de Docker y clonado
 
-- Crear/configurar una OAuth App con callback `http://localhost:3001/api/auth/callback/github`.
-- Completar `GITHUB_OAUTH_CLIENT_ID` y `GITHUB_OAUTH_CLIENT_SECRET`.
-- Validar login, `GET /api/me`, recarga de sesión y logout desde `apps/web`.
+- Agregar configuración y conexión a Docker Desktop mediante Dockerode.
+- Después implementar tokens `contents: read` restringidos por repositorio.
+- Crear la imagen `manteiner-git`, el clon por stdin y el volumen efímero.
 
 ### Decisión abierta que queda
 
@@ -94,10 +96,12 @@ porque son las trampas que hacen perder horas.
 apps/api/src/
   config.ts       Validacion de entorno con Zod. Si falta un secreto, NO arranca.
   db/client.ts    Abre SQLite, aplica PRAGMAs y migraciones, y cierra la conexion.
-  db/schema.ts    Schema Drizzle de las 13 tablas.
+  db/schema.ts    Schema Drizzle de las 15 tablas.
   db/migrations/ Migraciones SQL versionadas.
   routes/auth.ts  Puente Fastify/Better Auth + GET /api/me.
+  routes/github.ts Instalacion de GitHub App, repos disponibles y vinculacion.
   services/auth.ts Configura GitHub, sesiones y descarte de tokens OAuth.
+  services/github-app.ts JWT de App, tokens efimeros y llamadas a GitHub.
   services/credential-crypto.ts  AES-256-GCM para credenciales de proveedores.
   errors.ts       AppError + handler unico. Forma { error: { code, message } }.
   server.ts       buildServer(config) -> NO escucha, para que los tests usen inject().
@@ -118,7 +122,7 @@ spikes/src/
   lib/openai-credential.ts   Carga/refresco de la credencial. Base de la Fase 4.
 
 apps/web/src/
-  App.tsx          Login, sesión y logout funcionales, sin estilos.
+  App.tsx          Sesión iniciada y logout; usa los componentes visuales existentes.
   auth-client.ts  Cliente React de Better Auth.
 ```
 
@@ -136,7 +140,7 @@ apps/web/src/
 ## Comandos útiles
 
 ```bash
-npm test                                              # 85 tests
+npm test                                              # 87 tests
 npm run typecheck
 npm run dev                                           # API en :3001
 npm run dev:web                                       # web en :5173

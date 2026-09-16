@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { describe, it } from "node:test";
 
-import { ConfigError, loadConfig, masterKeyBytes } from "./config.ts";
+import { ConfigError, githubAppPrivateKeyBytes, loadConfig, masterKeyBytes } from "./config.ts";
 
 const claveValida = randomBytes(32).toString("base64");
 const secretoValido = "x".repeat(32);
+const githubPrivateKey = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  privateKeyEncoding: { type: "pkcs8", format: "pem" },
+  publicKeyEncoding: { type: "spki", format: "pem" },
+}).privateKey;
 
 function env(overrides: Record<string, string | undefined> = {}) {
   return {
@@ -13,6 +18,11 @@ function env(overrides: Record<string, string | undefined> = {}) {
     SESSION_SECRET: secretoValido,
     GITHUB_OAUTH_CLIENT_ID: "github-client-id",
     GITHUB_OAUTH_CLIENT_SECRET: "github-client-secret",
+    GITHUB_APP_ID: "123456",
+    GITHUB_APP_SLUG: "manteiner-test",
+    GITHUB_APP_CLIENT_ID: "github-app-client-id",
+    GITHUB_APP_CLIENT_SECRET: "github-app-client-secret",
+    GITHUB_APP_PRIVATE_KEY_BASE64: Buffer.from(githubPrivateKey).toString("base64"),
     ...overrides,
   } as NodeJS.ProcessEnv;
 }
@@ -43,6 +53,15 @@ describe("loadConfig", () => {
   it("no arranca si faltan las credenciales OAuth de GitHub", () => {
     assert.throws(() => loadConfig(env({ GITHUB_OAUTH_CLIENT_ID: undefined })), ConfigError);
     assert.throws(() => loadConfig(env({ GITHUB_OAUTH_CLIENT_SECRET: undefined })), ConfigError);
+  });
+
+  it("no arranca si falta o es invalida la configuracion de GitHub App", () => {
+    assert.throws(() => loadConfig(env({ GITHUB_APP_ID: undefined })), ConfigError);
+    assert.throws(() => loadConfig(env({ GITHUB_APP_SLUG: "Slug Invalido" })), ConfigError);
+    assert.throws(
+      () => loadConfig(env({ GITHUB_APP_PRIVATE_KEY_BASE64: Buffer.from("no-es-pem").toString("base64") })),
+      ConfigError,
+    );
   });
 
   it("rechaza una MASTER_KEY que no sean 32 bytes", () => {
@@ -95,12 +114,19 @@ describe("loadConfig", () => {
       assert.match(err.message, /SESSION_SECRET/);
       assert.match(err.message, /GITHUB_OAUTH_CLIENT_ID/);
       assert.match(err.message, /GITHUB_OAUTH_CLIENT_SECRET/);
+      assert.match(err.message, /GITHUB_APP_ID/);
+      assert.match(err.message, /GITHUB_APP_PRIVATE_KEY_BASE64/);
     }
   });
 
   it("decodifica la clave maestra a 32 bytes", () => {
     const config = loadConfig(env());
     assert.equal(masterKeyBytes(config).length, 32);
+  });
+
+  it("decodifica la private key de GitHub App", () => {
+    const config = loadConfig(env());
+    assert.match(githubAppPrivateKeyBytes(config).toString("utf8"), /BEGIN PRIVATE KEY/);
   });
 
   it("devuelve un objeto congelado", () => {

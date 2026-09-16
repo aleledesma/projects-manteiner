@@ -42,18 +42,26 @@
 |--------|------|-------------|
 | `GET` | `/api/github/install-url` | URL de instalación de la App (con `state`). |
 | `GET` | `/api/github/setup` | Callback post-instalación. |
-| `POST` | `/api/github/webhook` | Webhooks (firma verificada). |
 | `GET` | `/api/github/available-repos` | Repos de las instalaciones, aún no vinculados. |
+
+Los tres endpoints están implementados. `install-url` guarda solamente el hash de un `state`
+aleatorio y `setup` exige sesión, consume ese estado una sola vez, comprueba con una autorización
+temporal de GitHub que el usuario puede acceder a la instalación y revoca el token al terminar.
+`POST /api/github/webhook` queda pendiente junto con la decisión entre webhooks y sincronización
+on-demand.
 
 ### Repositorios
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `GET` | `/api/repos` | Repos vinculados + resumen del último run. |
+| `GET` | `/api/repos` | Repos vinculados. |
 | `POST` | `/api/repos` | Vincula uno (`{ githubRepoId }`). |
 | `GET` | `/api/repos/:id` | Detalle + preferencia de modelo. |
 | `PATCH` | `/api/repos/:id` | Actualiza preferencias (modelo por repo). |
 | `DELETE` | `/api/repos/:id` | Desvincula (soft delete; los runs se conservan). |
+
+Por ahora están implementados `GET /api/repos` y `POST /api/repos`; el resumen del último run y
+las operaciones sobre un repo individual llegan con las fases que consumen esos datos.
 
 ### Proveedores de IA
 

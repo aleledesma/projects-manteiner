@@ -14,12 +14,12 @@
 ```
 users ──1:N──> sessions / accounts / provider_credentials
   │
-  ├──1:N──> github_installations ──1:N──> repositories
-  │                                            │
-  └──────────────────1:N──────────────────────>│
-                                               │
-                                          1:N  v
-                                            runs ──1:N──> run_steps
+  ├──N:M──> github_installations ──1:N──> repositories
+  │          (github_user_installations)         │
+  └──────────────────1:N────────────────────────>│
+                                                  │
+                                             1:N  v
+                                               runs ──1:N──> run_steps
                                               │
                                               ├──1:N──> run_events
                                               ├──1:N──> run_findings
@@ -90,7 +90,6 @@ Instalaciones de la GitHub App. Ver [03](./03-autenticacion-github.md).
 ```sql
 CREATE TABLE github_installations (
   id                 TEXT PRIMARY KEY,
-  user_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   installation_id    INTEGER NOT NULL UNIQUE,   -- id de GitHub
   account_login      TEXT NOT NULL,             -- user u org donde se instalo
   account_type       TEXT NOT NULL,             -- 'User' | 'Organization'
@@ -99,9 +98,20 @@ CREATE TABLE github_installations (
   created_at         INTEGER NOT NULL,
   updated_at         INTEGER NOT NULL
 );
+
+CREATE TABLE github_user_installations (
+  id                 TEXT PRIMARY KEY,
+  user_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  installation_id    TEXT NOT NULL REFERENCES github_installations(id) ON DELETE CASCADE,
+  created_at         INTEGER NOT NULL,
+  updated_at         INTEGER NOT NULL,
+  UNIQUE (user_id, installation_id)
+);
 ```
 
-No se almacenan installation tokens: se generan on-demand y viven ~1h.
+La instalación representa el recurso global de GitHub; la tabla puente permite que varios
+usuarios autorizados compartan una instalación organizacional sin compartir repos vinculados,
+runs ni credenciales. No se almacenan installation tokens: se generan on-demand y viven ~1h.
 
 ### `repositories`
 

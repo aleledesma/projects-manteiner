@@ -32,7 +32,7 @@ export function authRoutes(app: FastifyInstance): void {
       .prepare(
         `SELECT
           EXISTS(SELECT 1 FROM provider_credentials WHERE user_id = ?) AS hasProvider,
-          EXISTS(SELECT 1 FROM github_installations WHERE user_id = ?) AS hasInstallation,
+          EXISTS(SELECT 1 FROM github_user_installations WHERE user_id = ?) AS hasInstallation,
           EXISTS(SELECT 1 FROM repositories WHERE user_id = ? AND unlinked_at IS NULL) AS hasRepos`,
       )
       .get(session.user.id, session.user.id, session.user.id) as {
