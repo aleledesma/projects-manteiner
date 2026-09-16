@@ -1,6 +1,8 @@
 const SIZES = {
   sm: "size-6 rounded-[7px] text-[10.5px]",
   md: "size-7 rounded-lg text-[11px]",
+  /** Bloque de usuario del sidebar, con nombre y email en dos lineas. */
+  lg: "size-[30px] rounded-[9px] text-[11.5px]",
 } as const
 
 type Props = {

@@ -126,7 +126,7 @@ function UserMenu({ user, onSignOut }: Props) {
         onClick={() => setAbierto((v) => !v)}
         className="flex w-full items-center gap-2.5 rounded-[9px] px-2 py-1.5 text-left transition-colors duration-150 hover:bg-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
       >
-        <Avatar name={user.name} src={user.image} />
+        <Avatar name={user.name} src={user.image} size="lg" />
         <div className="flex flex-col max-w-[77%]">
           <span className="min-w-0 flex-1 truncate font-mono text-[12.5px]">
             {user.name ?? "Sin nombre"}
