@@ -407,7 +407,7 @@ Claves de este diseño:
 
 - 🟢 `edit` en **deny por defecto** con allowlist de manifiestos. El agente no puede tocar
   código fuente aunque el modelo decida hacerlo. Es la mitad del control; la otra mitad es
-  la validación del diff en el host ([03](./03-autenticacion-github.md)).
+  la validación del diff en el contenedor de publicación sin LLM ([03](./03-autenticacion-github.md)).
 - 🟢 `bash` en **deny por defecto** con allowlist de comandos de solo consulta.
   Nada de `npm install` completo (ejecuta scripts arbitrarios del paquete);
   `--package-lock-only` actualiza el lockfile sin ejecutar nada.
@@ -450,7 +450,7 @@ if (result.data.info.error?.name === "StructuredOutputError") {
 }
 ```
 
-🟢 Aun así, **revalidamos siempre con Zod en el host**. `structured_output` garantiza la
+🟢 Aun así, **revalidamos siempre con Zod en el host**. Structured output garantiza la
 forma, no la coherencia semántica (por ejemplo, que `findings_count` coincida con el array,
 o que las URLs de referencias sean https).
 

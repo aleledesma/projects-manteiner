@@ -31,11 +31,20 @@ export function normalizeReport(input: MaintenanceReport): NormalizeResult {
 
   dedupeFindingKeys(report, warnings);
   dropInsecureReferences(report, warnings);
+  dropInsecureDependencyUrls(report, warnings);
   downgradeUnsupportedSeverities(report, warnings);
   checkSkipReasons(report, warnings);
   checkDiffCoherence(report, warnings);
 
   return { report, warnings };
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -75,11 +84,7 @@ function dropInsecureReferences(report: MaintenanceReport, warnings: Warning[]):
     if (!finding.references?.length) continue;
 
     const validas = finding.references.filter((ref) => {
-      try {
-        return new URL(ref.url).protocol === "https:";
-      } catch {
-        return false;
-      }
+      return isHttpsUrl(ref.url);
     });
 
     const descartadas = finding.references.length - validas.length;
@@ -89,6 +94,32 @@ function dropInsecureReferences(report: MaintenanceReport, warnings: Warning[]):
         message: `Se descartaron ${descartadas} referencia(s) no-https en "${finding.finding_key}".`,
       });
       finding.references = validas;
+    }
+  }
+}
+
+/** Aplica la misma politica de enlaces seguros a changelogs y guias de migracion. */
+function dropInsecureDependencyUrls(report: MaintenanceReport, warnings: Warning[]): void {
+  for (const update of report.dependency_updates.applied) {
+    if (typeof update.changelog_url === "string" && !isHttpsUrl(update.changelog_url)) {
+      warnings.push({
+        code: "INSECURE_CHANGELOG_URL_DROPPED",
+        message: `Se descarto el changelog no-https de "${update.name}".`,
+      });
+      delete update.changelog_url;
+    }
+  }
+
+  for (const update of report.dependency_updates.deferred) {
+    if (
+      typeof update.migration_guide_url === "string" &&
+      !isHttpsUrl(update.migration_guide_url)
+    ) {
+      warnings.push({
+        code: "INSECURE_MIGRATION_URL_DROPPED",
+        message: `Se descarto la guia de migracion no-https de "${update.name}".`,
+      });
+      delete update.migration_guide_url;
     }
   }
 }

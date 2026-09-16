@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 
 import type { FastifyInstance } from "fastify";
@@ -9,19 +12,23 @@ import { buildServer } from "./server.ts";
 
 describe("servidor", () => {
   let app: FastifyInstance;
+  let temporaryDirectory: string;
 
   before(() => {
+    temporaryDirectory = mkdtempSync(join(tmpdir(), "manteiner-server-"));
     const config = loadConfig({
       NODE_ENV: "test",
       LOG_LEVEL: "silent",
       MASTER_KEY: randomBytes(32).toString("base64"),
       SESSION_SECRET: "y".repeat(32),
+      DATABASE_PATH: join(temporaryDirectory, "manteiner.db"),
     } as NodeJS.ProcessEnv);
     app = buildServer(config);
   });
 
   after(async () => {
     await app.close();
+    rmSync(temporaryDirectory, { recursive: true, force: true });
   });
 
   it("GET /api/health responde ok", async () => {

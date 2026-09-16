@@ -175,9 +175,16 @@ CREATE TABLE user_model_preferences (
   small_model_id     TEXT,                      -- modelo barato para titulos/resumenes
   created_at         INTEGER NOT NULL,
   updated_at         INTEGER NOT NULL,
-  UNIQUE (user_id, repository_id)
 );
+CREATE UNIQUE INDEX idx_model_preferences_global
+  ON user_model_preferences(user_id) WHERE repository_id IS NULL;
+CREATE UNIQUE INDEX idx_model_preferences_repository
+  ON user_model_preferences(user_id, repository_id) WHERE repository_id IS NOT NULL;
 ```
+
+Se usan dos índices parciales porque SQLite considera distintos a los valores `NULL` dentro de
+una restricción `UNIQUE`: un índice compuesto común permitiría varias preferencias globales para
+el mismo usuario.
 
 ### `runs`
 
@@ -331,5 +338,6 @@ Los binarios van al **filesystem**, no a SQLite. La DB guarda la referencia.
 
 ## Migraciones
 
-🟢 Drizzle Kit genera SQL versionado en `apps/api/src/db/migrations/`. Se aplican al
-arrancar la API, dentro de una transacción. **Nunca** `db.push` en algo que no sea desarrollo local.
+🟢 Implementado: Drizzle Kit genera SQL versionado en `apps/api/src/db/migrations/`. El migrador
+síncrono de Drizzle lo aplica al arrancar la API dentro de una transacción. **Nunca** `db.push`
+en algo que no sea desarrollo local.

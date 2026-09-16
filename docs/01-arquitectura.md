@@ -117,7 +117,7 @@ sola vez y lo consumen la API (validación), el runner (structured output) y la 
     - persiste steps/eventos en SQLite ----------+
     - fan-out a los navegadores conectados (SSE)-+
  7. status: collecting
-    - lee structured_output del resultado
+    - lee `info.structured` del resultado
     - valida contra el JSON Schema; si falla -> reintento acotado
     - lee `git diff` del volumen por exec (solo texto, a memoria)
     - docker stop + docker rm del contenedor 2

@@ -14,10 +14,10 @@ seguras, devuelve un informe estructurado y genera un PDF, mostrando el progreso
 | Fase | Estado |
 |------|--------|
 | 0 — Verificación técnica | ✅ cerrada ([hallazgos](./docs/13-hallazgos-spike.md)) |
-| 1 — Esqueleto y persistencia | 🚧 70% — API y contratos listos y verificados contra opencode real. **Falta SQLite y el cifrado.** |
+| 1 — Esqueleto y persistencia | 🚧 85% — API, contratos y SQLite listos. **Falta el cifrado.** |
 | 2 a 9 | 🔲 pendientes ([roadmap](./docs/11-roadmap.md)) |
 
-57 tests pasando · typecheck limpio · el contrato del agente ya fue aceptado por opencode.
+67 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
 
 ## Requisitos
 
@@ -54,6 +54,7 @@ Es deliberado: mejor caer con un mensaje claro que correr sin cifrado.
 | `npm test` | Tests de todos los workspaces |
 | `npm run typecheck` | `tsc --noEmit` en todos los workspaces |
 | `npm run print-schema --workspace @manteiner/contracts` | Imprime el JSON Schema del informe |
+| `npm run db:generate --workspace @manteiner/api` | Genera migraciones al cambiar el schema Drizzle |
 
 ## Estructura
 

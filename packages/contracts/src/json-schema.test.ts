@@ -58,13 +58,19 @@ describe("buildStrictMaintenanceReportJsonSchema", () => {
     assert.deepEqual([...required].sort(), [...props].sort());
   });
 
-  it("vuelve nullable lo que antes era opcional", () => {
+  it("requiere los opcionales y conserva su nullabilidad", () => {
     const strict = buildStrictMaintenanceReportJsonSchema();
     const steps = (strict["properties"] as Record<string, any>)["steps"];
     const step = steps["items"];
     // `skip_reason` era opcional en el schema normal.
     const skipReason = step["properties"]["skip_reason"];
-    assert.ok(skipReason["anyOf"], "skip_reason deberia haberse vuelto anyOf con null");
+    const types = Array.isArray(skipReason["type"])
+      ? skipReason["type"]
+      : (skipReason["anyOf"] as Array<Record<string, unknown>> | undefined)?.map(
+          (alternative) => alternative["type"],
+        );
+    assert.ok(types?.includes("null"), "skip_reason debe conservar la posibilidad de ser null");
+    assert.equal(types?.filter((type) => type === "null").length, 1, "null no debe duplicarse");
     assert.ok(
       (step["required"] as string[]).includes("skip_reason"),
       "skip_reason deberia figurar como requerida en modo estricto",

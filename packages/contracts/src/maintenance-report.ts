@@ -65,8 +65,8 @@ export const CONFIDENCES = ["low", "medium", "high"] as const;
 
 const locationSchema = z.object({
   path: z.string().min(1).meta({ description: "Ruta relativa a la raiz del repositorio." }),
-  line: z.number().int().positive().optional(),
-  note: z.string().optional(),
+  line: z.number().int().positive().nullish(),
+  note: z.string().nullish(),
 });
 
 const referenceSchema = z.object({
@@ -76,7 +76,7 @@ const referenceSchema = z.object({
   }),
   official: z
     .boolean()
-    .optional()
+    .nullish()
     .meta({ description: "true si es documentacion oficial del proyecto o del proveedor." }),
 });
 
@@ -96,7 +96,7 @@ export const summarySchema = z.object({
 
 export const stackItemSchema = z.object({
   name: z.string().min(1),
-  version: z.string().optional(),
+  version: z.string().nullish(),
   category: z.enum([
     "runtime",
     "language",
@@ -108,7 +108,7 @@ export const stackItemSchema = z.object({
     "database",
     "testing",
   ]),
-  evidence: z.string().optional().meta({ description: "Archivo donde se detecto." }),
+  evidence: z.string().nullish().meta({ description: "Archivo donde se detecto." }),
 });
 
 export const stepSchema = z.object({
@@ -118,8 +118,8 @@ export const stepSchema = z.object({
   description: z.string().min(1).meta({
     description: "Que se hizo y que se encontro en esta fase. Markdown.",
   }),
-  evidence: z.array(z.string()).optional(),
-  skip_reason: z.string().optional().meta({
+  evidence: z.array(z.string()).nullish(),
+  skip_reason: z.string().nullish().meta({
     description: "Obligatorio si status es skipped.",
   }),
 });
@@ -131,9 +131,9 @@ export const appliedUpdateSchema = z.object({
   bump: z.enum(["patch", "minor"]).meta({
     description: "Solo patch o minor. Un major NUNCA se aplica.",
   }),
-  scope: z.enum(["prod", "dev", "peer", "optional"]).optional(),
-  changelog_url: z.string().optional(),
-  rationale: z.string().optional().meta({
+  scope: z.enum(["prod", "dev", "peer", "optional"]).nullish(),
+  changelog_url: z.string().nullish(),
+  rationale: z.string().nullish().meta({
     description: "En que evidencia te basaste para considerarla segura.",
   }),
 });
@@ -142,18 +142,18 @@ export const deferredUpdateSchema = z.object({
   name: z.string().min(1),
   from: z.string().min(1),
   to: z.string().min(1),
-  bump: z.enum(["major", "minor", "patch"]).optional(),
+  bump: z.enum(["major", "minor", "patch"]).nullish(),
   reason: z.string().min(1).meta({ description: "Por que no se aplico." }),
-  breaking_changes: z.array(z.string()).optional(),
-  migration_guide_url: z.string().optional(),
-  estimated_effort: z.enum(EFFORTS).optional(),
+  breaking_changes: z.array(z.string()).nullish(),
+  migration_guide_url: z.string().nullish(),
+  estimated_effort: z.enum(EFFORTS).nullish(),
 });
 
 export const unmaintainedDependencySchema = z.object({
   name: z.string().min(1),
-  last_release: z.string().optional(),
+  last_release: z.string().nullish(),
   evidence: z.string().min(1),
-  alternative: z.string().optional(),
+  alternative: z.string().nullish(),
 });
 
 export const dependencyUpdatesSchema = z.object({
@@ -177,15 +177,15 @@ export const findingSchema = z.object({
   severity: z.enum(SEVERITIES).meta({
     description: "Impacto de MANTENIMIENTO, no de seguridad.",
   }),
-  effort: z.enum(EFFORTS).optional(),
+  effort: z.enum(EFFORTS).nullish(),
   confidence: z.enum(CONFIDENCES).meta({
     description: "Que tan seguro estas. Si no pudiste verificar la evidencia, poné low.",
   }),
   title: z.string().min(1).max(140),
   description: z.string().min(1).meta({ description: "Que pasa y por que importa. Markdown." }),
   recommendation: z.string().min(1).meta({ description: "Que hacer al respecto. Markdown." }),
-  locations: z.array(locationSchema).optional(),
-  references: z.array(referenceSchema).optional(),
+  locations: z.array(locationSchema).nullish(),
+  references: z.array(referenceSchema).nullish(),
 });
 
 export const proposedPullRequestSchema = z.object({
@@ -207,7 +207,19 @@ export const maintenanceReportSchema = z
     audit_type: z.literal("maintenance"),
     summary: summarySchema,
     stack_detected: z.array(stackItemSchema),
-    steps: z.array(stepSchema).min(1),
+    steps: z
+      .array(stepSchema)
+      .length(STEP_KEYS.length)
+      .refine(
+        (steps) =>
+          steps.every(
+            (step, index) =>
+              step.key === STEP_KEYS[index] && step.title === STEP_TITLES[step.key],
+          ),
+        {
+          message: "Las fases deben aparecer en el orden definido y con sus titulos literales.",
+        },
+      ),
     dependency_updates: dependencyUpdatesSchema,
     findings: z.array(findingSchema),
     proposed_pull_request: proposedPullRequestSchema.nullable().meta({

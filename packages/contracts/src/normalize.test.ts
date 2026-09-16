@@ -62,6 +62,21 @@ describe("normalizeReport", () => {
       assert.equal(report.findings[0]!.references![0]!.url, "https://ejemplo.com/a");
       assert.deepEqual(codigos(warnings), ["INSECURE_REFERENCE_DROPPED"]);
     });
+
+    it("descarta changelogs y guias de migracion que no son https", () => {
+      const original = validReport();
+      original.dependency_updates.applied[0]!.changelog_url = "";
+      original.dependency_updates.deferred[0]!.migration_guide_url = "javascript:alert(1)";
+
+      const { report, warnings } = normalizeReport(original);
+
+      assert.equal(report.dependency_updates.applied[0]!.changelog_url, undefined);
+      assert.equal(report.dependency_updates.deferred[0]!.migration_guide_url, undefined);
+      assert.deepEqual(codigos(warnings), [
+        "INSECURE_CHANGELOG_URL_DROPPED",
+        "INSECURE_MIGRATION_URL_DROPPED",
+      ]);
+    });
   });
 
   describe("severidad sin sustento", () => {

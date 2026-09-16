@@ -71,12 +71,27 @@ function makeAllPropertiesRequired(node: unknown): JsonSchema {
       // Era opcional: se vuelve requerida pero nullable, para no cambiar la
       // semantica de "este campo puede no venir".
       const sub = (propiedades as Record<string, unknown>)[clave];
-      (propiedades as Record<string, unknown>)[clave] = { anyOf: [sub, { type: "null" }] };
+      (propiedades as Record<string, unknown>)[clave] = allowsNull(sub)
+        ? sub
+        : { anyOf: [sub, { type: "null" }] };
     }
     copia["required"] = claves;
   }
 
   return copia;
+}
+
+function allowsNull(node: unknown): boolean {
+  if (node === null || typeof node !== "object") return false;
+  const schema = node as Record<string, unknown>;
+  if (schema["type"] === "null") return true;
+  if (Array.isArray(schema["type"]) && schema["type"].includes("null")) return true;
+
+  for (const keyword of ["anyOf", "oneOf"] as const) {
+    const alternatives = schema[keyword];
+    if (Array.isArray(alternatives) && alternatives.some(allowsNull)) return true;
+  }
+  return false;
 }
 
 /** Tamaño del schema serializado. Util para diagnosticar limites del proveedor (I5). */

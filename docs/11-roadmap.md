@@ -57,7 +57,7 @@ las correcciones aplicadas a los documentos (revisiones R3 y R4).
       del JSON Schema + prompt versionado. 46 tests.
 - [x] **Cerrar I5** ✅: el schema (6.279 bytes) fue aceptado y el modelo devolvió un informe
       conforme. Ver [13](./13-hallazgos-spike.md). De paso quedaron cerradas I4 e I12.
-- [ ] Drizzle + better-sqlite3 con el DDL de [02](./02-modelo-de-datos.md) y primera migración.
+- [x] Drizzle + better-sqlite3 con el DDL de [02](./02-modelo-de-datos.md) y primera migración.
 - [ ] Servicio de cifrado AES-256-GCM con AAD + tests.
 
 ### Por qué `packages/contracts` se adelantó desde la Fase 5
@@ -134,11 +134,11 @@ el repositorio no existe en ningún punto del filesystem del host.
 
 **Criterios de aceptación reubicados desde la Fase 0 y el spike 3:**
 
-- [ ] I4 — `opencode serve` arranca sin credenciales y `auth.set` posterior funciona.
+- [x] I4 — `opencode serve` arranca sin credenciales y `auth.set` posterior funciona. Ver paso 1.3.
 - [ ] I6 — el agente trabaja con `bash: deny` + allowlist sin trabarse.
 - [ ] I7b — el modelo mantiene la lista de todos con disciplina.
 - [ ] I11 — ¿`GET /session/{id}/diff` funciona con `snapshot: false`? Si sí, reemplaza el `git diff` por `exec`.
-- [ ] I12 — ¿`auth.set` acepta `accountId` en la versión pinneada de opencode?
+- [x] I12 — `auth.set` acepta `accountId` en opencode 1.18.30. Ver paso 1.3.
 - [ ] 3.5 — `dockerode` contra el named pipe de Docker Desktop en Windows.
 
 **Entregable:** `POST /api/repos/:id/runs` corre el agente de punta a punta y guarda

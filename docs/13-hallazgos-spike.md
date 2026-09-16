@@ -358,16 +358,14 @@ no nuestro agente `maintainer`, que todavía no existe como archivo.
 
 ---
 
-## Runtime pendiente (I4, I5, I6, I7b)
+## Runtime pendiente (I6, I7b)
 
 Lo que **no** se puede saber leyendo tipos, porque es comportamiento del servidor o del modelo:
 
 | # | Pregunta | Cuándo verificarlo |
 |---|----------|--------------------|
-| I4 | ¿`opencode serve` arranca sin credenciales cargadas? | Spike 3 o Fase 5. |
-| I5 | ¿Acepta y respeta el JSON Schema completo del informe? | **Fase 1** (contrato adelantado). Señal temprana: el schema derivado pesa **6.279 bytes**, lejos de cualquier límite razonable. Falta probarlo contra opencode. |
 | I6 | ¿El agente trabaja con `bash: deny` + allowlist, o se traba? | Fase 5, primer run real. |
 | I7b | ¿El modelo mantiene la lista de todos con disciplina? | Fase 5, primer run real. |
 
-🟢 Ninguna bloquea las fases 1 a 4. Se verifican todas juntas en el primer run real, que es
-cuando hay con qué probarlas.
+🟢 Ninguna bloquea las fases 1 a 4. I4 e I5 quedaron cerradas en el paso 1.3; I6 e I7b se
+verifican juntas con el prompt real de la Fase 5.

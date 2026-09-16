@@ -7,8 +7,8 @@ primero para retomar el trabajo.
 
 ## Resumen en una línea
 
-Fase 0 cerrada, Fase 1 al 70%: la API arranca, el contrato del agente está escrito y **verificado
-contra opencode real**. Falta la base de datos y el cifrado.
+Fase 0 cerrada, Fase 1 al 85%: la API arranca, el contrato base fue verificado contra opencode
+real y después endurecido con pruebas locales, y SQLite está integrado. Falta el cifrado.
 
 ## Qué está hecho y funcionando
 
@@ -17,28 +17,25 @@ contra opencode real**. Falta la base de datos y el cifrado.
 | Planificación completa (docs 00-13) | ✅ | 5 revisiones registradas |
 | Fase 0 — spikes de verificación | ✅ cerrada | [13](./13-hallazgos-spike.md) |
 | Monorepo npm workspaces | ✅ | `apps/api`, `packages/contracts`, `spikes` |
-| API Fastify + config + errores + logging | ✅ | 11 tests |
-| `packages/contracts` | ✅ | 46 tests |
-| Contrato verificado contra opencode real | ✅ | I5 cerrado |
-| Base de datos SQLite | 🔲 | **lo que sigue** |
+| API Fastify + config + errores + logging + SQLite | ✅ | 17 tests |
+| `packages/contracts` | ✅ | 50 tests |
+| Contrato base verificado contra opencode real | ✅ | I5 cerrado; hardening posterior cubierto localmente |
+| Base de datos SQLite | ✅ | 11 tablas + migración inicial |
 | Cifrado AES-256-GCM | 🔲 | **lo que sigue** |
 | Fases 2 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 
 ```bash
-npm install && npm test        # 57/57
+npm install && npm test        # 67/67
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
 ## Lo que sigue, en orden
 
-### 1.4 — Base de datos y cifrado (lo inmediato)
+### 1.4.b — Cifrado (lo inmediato)
 
-- Drizzle + better-sqlite3 con el DDL completo de [02](./02-modelo-de-datos.md).
-  PRAGMAs: `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`.
-- Migraciones versionadas con Drizzle Kit, aplicadas al arrancar dentro de una transacción.
 - Servicio de cifrado AES-256-GCM con **AAD = `userId:providerId`** ([10](./10-seguridad.md)).
   El test importante: que un ciphertext movido de un usuario a otro **falle al descifrar**.
 
@@ -96,6 +93,9 @@ porque son las trampas que hacen perder horas.
 ```
 apps/api/src/
   config.ts       Validacion de entorno con Zod. Si falta un secreto, NO arranca.
+  db/client.ts    Abre SQLite, aplica PRAGMAs y migraciones, y cierra la conexion.
+  db/schema.ts    Schema Drizzle de las 11 tablas.
+  db/migrations/ Primera migracion SQL versionada.
   errors.ts       AppError + handler unico. Forma { error: { code, message } }.
   server.ts       buildServer(config) -> NO escucha, para que los tests usen inject().
   index.ts        Entrypoint: valida config, arranca, maneja SIGTERM/SIGINT.
@@ -129,7 +129,7 @@ spikes/src/
 ## Comandos útiles
 
 ```bash
-npm test                                              # 57 tests
+npm test                                              # 67 tests
 npm run typecheck
 npm run dev                                           # API en :3001
 

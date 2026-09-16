@@ -292,29 +292,32 @@ fue largo) y la allowlist de archivos permitidos.
 #!/bin/sh
 set -eu
 OWNER="$1"; REPO="$2"; BASE="$3"; HEAD_BRANCH="$4"; shift 4
-ALLOWED="$*"
+# Los argumentos restantes son pathspecs fijos de la app, nunca datos del agente.
+[ "$#" -gt 0 ] || { echo "missing-allowlist" >&2; exit 2; }
 read -r TOKEN
 
 cd /work/repo
 git -c core.hooksPath=/dev/null checkout -b "$HEAD_BRANCH"
 
-# descartar todo cambio fuera de la allowlist
-for f in $(git diff --name-only); do
-  case " $ALLOWED " in
-    *" $(basename "$f") "*) : ;;
-    *) git checkout -- "$f"; echo "rejected:$f" >> /work/rejected ;;
-  esac
-done
+# Stagear solo archivos permitidos. Después, restaurar cambios tracked no
+# stageados y borrar untracked no permitidos. Esto también maneja archivos
+# nuevos y nombres con espacios sin parsear la salida de git.
+git add -A -- "$@"
+git restore --worktree .
+git clean -fd
 
-[ -n "$(git status --porcelain)" ] || { echo "no-changes"; exit 0; }
+git diff --cached --quiet && { echo "no-changes"; exit 0; }
 
 git -c user.name="Manteiner" -c user.email="bot@manteiner.local" \
-    -c core.hooksPath=/dev/null commit -am "$(cat /work/commit_msg)"
+    -c core.hooksPath=/dev/null commit -m "$(cat /work/commit_msg)"
 
 AUTH=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
 git -c http.extraHeader="Authorization: Basic ${AUTH}" \
-    push origin "$HEAD_BRANCH"
+    push "https://github.com/${OWNER}/${REPO}.git" "$HEAD_BRANCH"
 ```
+
+El push usa una URL explícita: `clone.sh` elimina `origin` antes de que el agente vea el
+workspace, y el contenedor de publicación no vuelve a persistirlo en `.git/config`.
 
 🟢 **El `git push` tiene el nombre de la rama como argumento, calculado por el orquestador.**
 El agente no interviene en ese valor. Ver [03](./03-autenticacion-github.md) para la

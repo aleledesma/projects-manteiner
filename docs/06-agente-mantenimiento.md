@@ -203,7 +203,9 @@ restricción del modelo no se pueden desincronizar.
 
 ✅ **Implementado en la Fase 1.** Zod 4 trae `z.toJSONSchema()` nativo, así que no hace falta
 `zod-to-json-schema` como decía la versión anterior de este documento. El schema derivado pesa
-**6.279 bytes**, cómodo para cualquier proveedor.
+**6.634 bytes** en la variante normal y **6.871 bytes** en la estricta destinada a opencode,
+cómodo para cualquier proveedor. La corrida real de I5 validó la versión base de 6.279 bytes;
+el hardening posterior está cubierto localmente y se reconfirma con el primer run de la Fase 5.
 
 ⚠️ Dos detalles que salieron al implementarlo:
 
@@ -213,6 +215,11 @@ restricción del modelo no se pueden desincronizar.
 - **Zod descarta las claves desconocidas, no rechaza el informe.** Es el comportamiento que
   queremos: si el modelo agrega un campo de más, no tiramos una auditoría entera por eso. El
   `additionalProperties: false` del JSON Schema ya se lo pide al modelo.
+- Los opcionales aceptan también `null`: OpenAI exige que todas las propiedades figuren en
+  `required` para structured output estricto y representa así los valores ausentes. El mismo
+  output debe ser válido al revalidarlo con Zod en el host.
+- `steps` exige exactamente las siete fases, en orden y con sus títulos literales. La longitud
+  se refleja en JSON Schema y la coherencia de key/título se revalida en el host.
 
 ```jsonc
 {
@@ -419,7 +426,7 @@ El JSON Schema garantiza forma; estas reglas garantizan sentido:
 
 ```
 intento 1: prompt normal
-   |-- structured_output valido y pasa Zod -> listo
+   |-- info.structured valido y pasa Zod -> listo
    |-- StructuredOutputError o Zod falla
         v
 intento 2: mismo prompt + "Tu respuesta anterior no cumplio el schema: <errores>.

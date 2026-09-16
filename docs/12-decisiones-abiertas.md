@@ -15,7 +15,7 @@ Estas se dan por firmes salvo que las cambiemos explícitamente.
 | D5 | El orquestador dirige la sesión de opencode; el runner solo expone el servidor | Prompt, schema y reintentos viven en el host, versionados y testeables. |
 | D6 | **Structured output** con JSON Schema derivado de Zod | Una sola fuente de verdad para restringir al modelo y validar en el host. |
 | D7 | `edit` y `bash` en **deny por defecto** con allowlist | El agente solo puede tocar manifiestos y correr comandos de consulta. |
-| D8 | Validación del diff **en el host** antes del PR | Defensa en profundidad: los permisos son config, esto es código. |
+| D8 | Validación del diff en el **contenedor de publicación sin LLM** antes del PR | Defensa en profundidad sin sacar el repositorio del volumen: los permisos son config, esto es código nuestro. |
 | D9 | Persistir eventos **antes** de emitirlos por SSE | El histórico no puede depender de que haya un navegador conectado. |
 | D10 | `run_events.id` autoincremental como cursor de `Last-Event-ID` | Es el único modo de hacer replay al reconectar. |
 | D11 | `provider_id`, `model_id`, `agent_version`, `schema_version` **congelados** en cada run | Sin eso el histórico deja de ser interpretable. |

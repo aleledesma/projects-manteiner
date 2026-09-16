@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { validReport } from "./fixtures.ts";
-import { maintenanceReportSchema, STEP_KEYS } from "./maintenance-report.ts";
+import { maintenanceReportSchema } from "./maintenance-report.ts";
 
 describe("maintenanceReportSchema", () => {
   it("acepta un informe completo valido", () => {
@@ -57,12 +57,38 @@ describe("maintenanceReportSchema", () => {
     assert.equal(maintenanceReportSchema.safeParse(report).success, false);
   });
 
-  it("acepta las 7 keys de fase", () => {
-    for (const key of STEP_KEYS) {
-      const report = validReport();
-      report.steps = [{ key, title: "x", status: "completed", description: "y" }];
-      assert.ok(maintenanceReportSchema.safeParse(report).success, `${key} deberia ser valida`);
+  it("exige exactamente las 7 fases", () => {
+    const report = validReport();
+    report.steps.pop();
+    assert.equal(maintenanceReportSchema.safeParse(report).success, false);
+  });
+
+  it("exige las fases en el orden definido", () => {
+    const report = validReport();
+    [report.steps[0], report.steps[1]] = [report.steps[1]!, report.steps[0]!];
+    assert.equal(maintenanceReportSchema.safeParse(report).success, false);
+  });
+
+  it("exige el titulo literal de cada fase", () => {
+    const report = validReport();
+    report.steps[0]!.title = "Titulo inventado";
+    assert.equal(maintenanceReportSchema.safeParse(report).success, false);
+  });
+
+  it("acepta null en opcionales requeridos por structured output estricto", () => {
+    const report = validReport();
+    for (const step of report.steps) {
+      step.evidence = null;
+      step.skip_reason = null;
     }
+    report.stack_detected[0]!.version = null;
+    report.stack_detected[0]!.evidence = null;
+    report.findings[0]!.effort = null;
+    report.findings[0]!.locations![0]!.note = null;
+    report.findings[0]!.references![0]!.official = null;
+
+    const result = maintenanceReportSchema.safeParse(report);
+    assert.ok(result.success, JSON.stringify(result.error?.issues, null, 2));
   });
 
   describe("finding_key", () => {
