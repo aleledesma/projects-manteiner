@@ -11,12 +11,15 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { masterKeyBytes, type Config } from "./config.ts";
 import { openDatabase, type AppDatabase, type DatabaseConnection } from "./db/client.ts";
 import { registerErrorHandler } from "./errors.ts";
+import { authRoutes } from "./routes/auth.ts";
 import { healthRoutes } from "./routes/health.ts";
+import { createAuth, type AppAuth } from "./services/auth.ts";
 import { CredentialCrypto } from "./services/credential-crypto.ts";
 
 export function buildServer(config: Config): FastifyInstance {
   const database = openDatabase(config.DATABASE_PATH);
   const credentialCrypto = new CredentialCrypto(masterKeyBytes(config));
+  const auth = createAuth(config, database.db);
   const app = Fastify({
     logger: {
       level: config.LOG_LEVEL,
@@ -53,11 +56,13 @@ export function buildServer(config: Config): FastifyInstance {
   app.decorate("db", database.db);
   app.decorate("database", database);
   app.decorate("credentialCrypto", credentialCrypto);
+  app.decorate("auth", auth);
   app.addHook("onClose", () => database.close());
 
   registerErrorHandler(app);
 
   app.register(healthRoutes, { prefix: "/api" });
+  authRoutes(app);
 
   return app;
 }
@@ -68,5 +73,6 @@ declare module "fastify" {
     db: AppDatabase;
     database: DatabaseConnection;
     credentialCrypto: CredentialCrypto;
+    auth: AppAuth;
   }
 }

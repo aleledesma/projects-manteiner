@@ -7,8 +7,8 @@ primero para retomar el trabajo.
 
 ## Resumen en una línea
 
-Fases 0 y 1 cerradas: la API arranca, el contrato está endurecido, SQLite está integrado y las
-credenciales se cifran con AES-256-GCM. El próximo paso es OAuth de GitHub, cuando se indique.
+Fases 0 y 1 cerradas y Fase 2 implementada: Better Auth administra GitHub OAuth y sesiones sobre
+SQLite, y existe una web funcional sin estilos. Falta el smoke test con una OAuth App real.
 
 ## Qué está hecho y funcionando
 
@@ -16,28 +16,30 @@ credenciales se cifran con AES-256-GCM. El próximo paso es OAuth de GitHub, cua
 |---|---|---|
 | Planificación completa (docs 00-13) | ✅ | 5 revisiones registradas |
 | Fase 0 — spikes de verificación | ✅ cerrada | [13](./13-hallazgos-spike.md) |
-| Monorepo npm workspaces | ✅ | `apps/api`, `packages/contracts`, `spikes` |
-| API Fastify + config + errores + logging + SQLite + cifrado | ✅ | 28 tests |
+| Monorepo npm workspaces | ✅ | `apps/api`, `apps/web`, `packages/contracts`, `spikes` |
+| API Fastify + config + errores + logging + SQLite + cifrado + auth | ✅ | 35 tests |
 | `packages/contracts` | ✅ | 50 tests |
 | Contrato base verificado contra opencode real | ✅ | I5 cerrado; hardening posterior cubierto localmente |
-| Base de datos SQLite | ✅ | 11 tablas + migración inicial |
+| Base de datos SQLite | ✅ | 13 tablas + 2 migraciones |
 | Cifrado AES-256-GCM | ✅ | IV aleatorio + AAD + 10 tests específicos |
-| Fases 2 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
+| Fase 2 — Better Auth + web mínima | 🟡 | Implementada; pendiente smoke test real |
+| Fases 3 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 
 ```bash
-npm install && npm test        # 78/78
+npm install && npm test        # 85/85
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
 ## Lo que sigue, en orden
 
-### Fase 2 — OAuth de GitHub (esperar indicación)
+### Cerrar Fase 2 — smoke test de GitHub OAuth
 
-- OAuth de GitHub para login, sesiones hasheadas y `GET /api/me`.
-- No comenzar hasta que el usuario lo indique.
+- Crear/configurar una OAuth App con callback `http://localhost:3001/api/auth/callback/github`.
+- Completar `GITHUB_OAUTH_CLIENT_ID` y `GITHUB_OAUTH_CLIENT_SECRET`.
+- Validar login, `GET /api/me`, recarga de sesión y logout desde `apps/web`.
 
 ### Decisión abierta que queda
 
@@ -92,8 +94,10 @@ porque son las trampas que hacen perder horas.
 apps/api/src/
   config.ts       Validacion de entorno con Zod. Si falta un secreto, NO arranca.
   db/client.ts    Abre SQLite, aplica PRAGMAs y migraciones, y cierra la conexion.
-  db/schema.ts    Schema Drizzle de las 11 tablas.
-  db/migrations/ Primera migracion SQL versionada.
+  db/schema.ts    Schema Drizzle de las 13 tablas.
+  db/migrations/ Migraciones SQL versionadas.
+  routes/auth.ts  Puente Fastify/Better Auth + GET /api/me.
+  services/auth.ts Configura GitHub, sesiones y descarte de tokens OAuth.
   services/credential-crypto.ts  AES-256-GCM para credenciales de proveedores.
   errors.ts       AppError + handler unico. Forma { error: { code, message } }.
   server.ts       buildServer(config) -> NO escucha, para que los tests usen inject().
@@ -112,6 +116,10 @@ spikes/src/
   01-openai-device-flow.ts   Device flow de OpenAI. Ya ejecutado.
   02-opencode-contract.ts    Contrato contra opencode. Ya ejecutado.
   lib/openai-credential.ts   Carga/refresco de la credencial. Base de la Fase 4.
+
+apps/web/src/
+  App.tsx          Login, sesión y logout funcionales, sin estilos.
+  auth-client.ts  Cliente React de Better Auth.
 ```
 
 ### Dos invariantes que no hay que romper
@@ -128,9 +136,10 @@ spikes/src/
 ## Comandos útiles
 
 ```bash
-npm test                                              # 78 tests
+npm test                                              # 85 tests
 npm run typecheck
 npm run dev                                           # API en :3001
+npm run dev:web                                       # web en :5173
 
 npm run print-schema --workspace @manteiner/contracts # el JSON Schema del informe
 npm run contract --workspace manteiner-spikes -- --dry-run   # verifica sin gastar tokens
@@ -142,7 +151,7 @@ npm run device-flow --workspace manteiner-spikes             # re-autenticar Ope
 
 - **Paso a paso.** El usuario quiere entender cada pieza; no construir fases enteras de una.
 - **Las decisiones se registran**, incluidas las descartadas y por qué.
-  [12](./12-decisiones-abiertas.md) tiene 18 decisiones y 5 revisiones.
+  [12](./12-decisiones-abiertas.md) tiene 19 decisiones y 7 revisiones.
 - **Verificar antes de construir**, pero solo lo que puede cambiar la arquitectura. El spike 3 se
   salteó aplicando ese criterio; sus preguntas pasaron a criterios de aceptación de las fases 3 y 5.
 - **No dejar procesos corriendo.** Verificar por PID después de levantar cualquier servidor.

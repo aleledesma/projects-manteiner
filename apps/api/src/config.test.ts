@@ -11,6 +11,8 @@ function env(overrides: Record<string, string | undefined> = {}) {
   return {
     MASTER_KEY: claveValida,
     SESSION_SECRET: secretoValido,
+    GITHUB_OAUTH_CLIENT_ID: "github-client-id",
+    GITHUB_OAUTH_CLIENT_SECRET: "github-client-secret",
     ...overrides,
   } as NodeJS.ProcessEnv;
 }
@@ -38,6 +40,11 @@ describe("loadConfig", () => {
     assert.throws(() => loadConfig(env({ SESSION_SECRET: undefined })), ConfigError);
   });
 
+  it("no arranca si faltan las credenciales OAuth de GitHub", () => {
+    assert.throws(() => loadConfig(env({ GITHUB_OAUTH_CLIENT_ID: undefined })), ConfigError);
+    assert.throws(() => loadConfig(env({ GITHUB_OAUTH_CLIENT_SECRET: undefined })), ConfigError);
+  });
+
   it("rechaza una MASTER_KEY que no sean 32 bytes", () => {
     const corta = randomBytes(16).toString("base64");
     assert.throws(() => loadConfig(env({ MASTER_KEY: corta })), ConfigError);
@@ -55,6 +62,29 @@ describe("loadConfig", () => {
     assert.throws(() => loadConfig(env({ SESSION_SECRET: "corto" })), ConfigError);
   });
 
+  it("exige un unico origen publico en produccion", () => {
+    assert.throws(
+      () =>
+        loadConfig(
+          env({
+            NODE_ENV: "production",
+            PUBLIC_URL: "https://api.manteiner.example",
+            WEB_URL: "https://manteiner.example",
+          }),
+        ),
+      ConfigError,
+    );
+
+    const config = loadConfig(
+      env({
+        NODE_ENV: "production",
+        PUBLIC_URL: "https://manteiner.example",
+        WEB_URL: "https://manteiner.example",
+      }),
+    );
+    assert.equal(config.isProduction, true);
+  });
+
   it("informa TODOS los problemas juntos, no solo el primero", () => {
     try {
       loadConfig({} as NodeJS.ProcessEnv);
@@ -63,6 +93,8 @@ describe("loadConfig", () => {
       assert.ok(err instanceof ConfigError);
       assert.match(err.message, /MASTER_KEY/);
       assert.match(err.message, /SESSION_SECRET/);
+      assert.match(err.message, /GITHUB_OAUTH_CLIENT_ID/);
+      assert.match(err.message, /GITHUB_OAUTH_CLIENT_SECRET/);
     }
   });
 

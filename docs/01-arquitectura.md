@@ -14,7 +14,8 @@
 |                                                                             |
 |  +--------+  +---------+  +---------+  +-----------+  +------------------+  |
 |  |  Auth  |  | GitHub  |  | Crypto  |  | Run Queue |  |    Event Bus     |  |
-|  | OAuth  |  | Service |  | AES-GCM |  | in-proc   |  |  fan-out -> SSE  |  |
+|  |Better  |  | Service |  | AES-GCM |  | in-proc   |  |  fan-out -> SSE  |  |
+|  | Auth   |  |         |  |         |  |           |  |                  |  |
 |  +--------+  +---------+  +---------+  +-----+-----+  +---------+--------+  |
 |                                              |                  |           |
 |                                        +-----v------------------v--------+  |
@@ -53,6 +54,7 @@ nunca coexisten en el mismo contenedor. Ver [05](./05-ejecucion-en-docker.md).
 | Lenguaje | **TypeScript** en todo | Tipos compartidos entre API, runner y web; el SDK de opencode es TS. |
 | Runtime | **Node 22 LTS** | Estable y compatible con el SDK. |
 | API | **Fastify** | Ligero, SSE sencillo, buen sistema de plugins y hooks. |
+| Autenticación | **Better Auth** | OAuth de GitHub, sesiones y cookies sin implementar criptografía de autenticación propia. |
 | Frontend | **React + Vite** | Sin complejidad de SSR; el estado vive en el backend. |
 | Routing web | **React Router** (modo declarativo) | Lo más simple y popular. Paquete `react-router`, sin SSR ni loaders. |
 | ORM / DB | **Drizzle ORM + better-sqlite3** | Migraciones versionadas, tipado, SQLite síncrono y rápido. |
@@ -67,6 +69,12 @@ Next.js sería razonable, pero esta app es **pesada de backend**: orquestación 
 Docker, colas, procesos largos y streams. Separar `apps/api` y `apps/web` deja cada
 pieza explícita y fácil de entender de a una — que es el objetivo declarado de
 construir paso a paso. Decisión cerrada: ver A1 en [12](./12-decisiones-abiertas.md).
+
+### Publicación web
+
+En producción la SPA y `/api` se publican bajo **el mismo origen**. Un reverse proxy sirve los
+archivos de `apps/web/dist` y envía `/api/*` a Fastify. Esto mantiene las cookies host-only y
+evita sumar CORS o cookies cross-site; `PUBLIC_URL` y `WEB_URL` deben compartir origen.
 
 ## Estructura de carpetas — 🟢 decidida
 
@@ -167,10 +175,10 @@ hace `docker rm` de los contenedores etiquetados `manteiner.run=*` que hayan que
 
 | Variable | Descripción |
 |----------|-------------|
-| `PORT`, `PUBLIC_URL` | Puerto y URL pública de la API (para callbacks OAuth). |
+| `PORT`, `PUBLIC_URL`, `WEB_URL` | Puerto, URL pública de la API y origen permitido de la web. |
 | `DATABASE_PATH` | Ruta del archivo SQLite. |
 | `MASTER_KEY` | Clave de 32 bytes (base64) para cifrar credenciales. Ver [10](./10-seguridad.md). |
-| `SESSION_SECRET` | Firma de la cookie de sesión. |
+| `SESSION_SECRET` | Firma cookies y protege los artefactos internos de Better Auth. |
 | `GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | Login de usuarios. |
 | `GITHUB_APP_ID` / `_PRIVATE_KEY` / `_WEBHOOK_SECRET` | GitHub App para acceso a repos. |
 | `DOCKER_SOCKET` | Default `/var/run/docker.sock` (o named pipe en Windows). |

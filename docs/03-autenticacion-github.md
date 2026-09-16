@@ -26,32 +26,31 @@ expiran en 1 hora. Para una app que va a clonar código ajeno y ejecutar un agen
 
 ## 1. Login del usuario (OAuth)
 
-Flujo estándar de authorization code:
+Flujo authorization code administrado por **Better Auth 1.6**:
 
 ```
-1. GET /api/auth/github
-   -> genera `state` aleatorio, lo guarda en cookie firmada (10 min)
-   -> redirect a https://github.com/login/oauth/authorize
-        ?client_id=...&redirect_uri=.../api/auth/github/callback
-        &scope=read:user user:email&state=...
+1. POST /api/auth/sign-in/social { provider: "github", callbackURL: "..." }
+   -> Better Auth genera `state` y PKCE, y persiste el estado temporal de un solo uso
+   -> devuelve la URL de https://github.com/login/oauth/authorize
 
-2. GET /api/auth/github/callback?code=...&state=...
-   -> valida `state` contra la cookie (anti-CSRF). Si no coincide: 400.
-   -> POST https://github.com/login/oauth/access_token  (code -> access_token)
-   -> GET https://api.github.com/user  (+ /user/emails si hace falta)
-   -> upsert en `users` por `github_id`
-   -> crea fila en `sessions`, setea cookie de sesion
-   -> redirect a la app
+2. GET /api/auth/callback/github?code=...&state=...
+   -> Better Auth valida `state` y PKCE
+   -> intercambia el codigo y consulta /user + /user/emails
+   -> crea/actualiza `users` y vincula `accounts` por el ID estable de GitHub
+   -> hooks eliminan access/refresh/id token antes de escribir `accounts`
+   -> crea `sessions`, firma la cookie y redirige a la web
 ```
 
 Detalles que importan:
 
-- 🟢 El scope del login es **mínimo**: `read:user` (y `user:email` si se quiere el mail).
-  El login **no** pide acceso a repos — eso lo da la App.
+- 🟢 El login usa `read:user user:email`: Better Auth necesita un email estable para crear el
+  usuario. **No** pide acceso a repos — eso lo da la GitHub App.
 - 🟢 El `access_token` del OAuth de login **no se persiste**. Se usa una sola vez para
   leer el perfil y se descarta. La sesión de la app es propia.
-- 🟢 Cookie de sesión: `httpOnly`, `secure`, `sameSite=lax`, con el valor **hasheado** en DB.
-- 🟢 `state` obligatorio y de un solo uso.
+- 🟢 Cookie de sesión: firmada, `httpOnly`, `secure` en producción y `sameSite=lax`.
+- 🟢 `state` y PKCE obligatorios; el estado temporal se consume una sola vez.
+- 🟢 `GET /api/me` expone el usuario y el estado del onboarding; el logout usa
+  `POST /api/auth/sign-out`.
 
 ## 2. Acceso a repositorios (GitHub App)
 

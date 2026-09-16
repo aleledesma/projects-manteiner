@@ -5,8 +5,8 @@ ejecuta **agentes de IA de mantenimiento** sobre ellos dentro de contenedores
 efímeros de Docker. El agente audita el repo, abre un PR con actualizaciones
 seguras, devuelve un JSON estructurado con lo que hizo y genera un reporte PDF.
 
-> Estado: **implementación**. Las Fases 0 y 1 están cerradas: API base,
-> contratos, persistencia SQLite y cifrado de credenciales están implementados.
+> Estado: **implementación**. Las Fases 0 y 1 están cerradas y la Fase 2 está implementada,
+> pendiente de una validación completa contra una OAuth App real de GitHub.
 
 ## Índice
 
@@ -56,3 +56,4 @@ vale tanto como saber qué se hizo.
 | R4 | Spike 2: catálogo real de eventos (32 tipos) y `todo.updated` reemplaza el parseo de marcadores de texto. Afecta [06](./06-agente-mantenimiento.md), [07](./07-progreso-sse.md). |
 | R5 | Fase 0 cerrada. Spike 3 salteado (sus preguntas pasan a criterios de aceptación de las fases 3 y 5) y `packages/contracts` se adelanta a la Fase 1 para cerrar I5 temprano. Afecta [11](./11-roadmap.md), [12](./12-decisiones-abiertas.md), [13](./13-hallazgos-spike.md). |
 | R6 | Paso 1.3: I5, I4 e I12 cerrados contra opencode real. El campo es `info.structured` (no `structured_output`) y el runtime emite eventos fuera de la unión de tipos del SDK. Afecta [04](./04-proveedores-ia-opencode.md), [07](./07-progreso-sse.md), [13](./13-hallazgos-spike.md). |
+| R7 | Better Auth reemplaza la implementación manual de OAuth y sesiones. Los tokens OAuth de login se descartan antes de persistir. Afecta [02](./02-modelo-de-datos.md), [03](./03-autenticacion-github.md), [09](./09-api-y-ui.md), [10](./10-seguridad.md). |

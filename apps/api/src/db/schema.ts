@@ -6,30 +6,72 @@ export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   githubId: integer("github_id").notNull().unique(),
   githubLogin: text("github_login").notNull(),
+  // Better Auth always writes both fields; nullable is kept for the pre-auth migration.
   name: text("name"),
-  email: text("email"),
-  avatarUrl: text("avatar_url"),
-  createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-  lastLoginAt: integer("last_login_at"),
+  email: text("email").unique(),
+  emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
+  image: text("avatar_url"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  lastLoginAt: integer("last_login_at", { mode: "timestamp_ms" }),
 });
 
 export const sessions = sqliteTable(
   "sessions",
   {
     id: text("id").primaryKey(),
+    token: text("token").notNull().unique(),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    createdAt: integer("created_at").notNull(),
-    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     userAgent: text("user_agent"),
-    ip: text("ip"),
+    ipAddress: text("ip"),
   },
   (table) => [
     index("idx_sessions_user").on(table.userId),
     index("idx_sessions_expires").on(table.expiresAt),
   ],
+);
+
+export const accounts = sqliteTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: integer("access_token_expires_at", { mode: "timestamp_ms" }),
+    refreshTokenExpiresAt: integer("refresh_token_expires_at", { mode: "timestamp_ms" }),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("idx_accounts_user").on(table.userId),
+    uniqueIndex("idx_accounts_provider_account").on(table.providerId, table.accountId),
+  ],
+);
+
+export const verifications = sqliteTable(
+  "verifications",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("idx_verifications_identifier").on(table.identifier)],
 );
 
 export const githubInstallations = sqliteTable(

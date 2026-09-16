@@ -21,9 +21,10 @@
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `GET` | `/api/auth/github` | Inicia OAuth. Redirect. |
-| `GET` | `/api/auth/github/callback` | Callback. Crea sesión. |
-| `POST` | `/api/auth/logout` | Borra la sesión. |
+| `POST` | `/api/auth/sign-in/social` | Inicia OAuth con `{ provider: "github" }`. |
+| `GET` | `/api/auth/callback/github` | Callback administrado por Better Auth. |
+| `GET` | `/api/auth/get-session` | Sesión para el cliente web de Better Auth. |
+| `POST` | `/api/auth/sign-out` | Borra la sesión. |
 | `GET` | `/api/me` | Usuario actual + estado de onboarding. |
 
 `GET /api/me` responde con lo que la UI necesita para decidir qué pantalla mostrar:

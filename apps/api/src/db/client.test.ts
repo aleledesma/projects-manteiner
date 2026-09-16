@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
+
+import BetterSqlite3 from "better-sqlite3";
 
 import { openDatabase, type DatabaseConnection } from "./client.ts";
 
@@ -37,6 +39,7 @@ describe("openDatabase", () => {
       rows.map((row) => row.name).filter((name) => !name.startsWith("sqlite_")),
       [
         "__drizzle_migrations",
+        "accounts",
         "github_installations",
         "provider_credentials",
         "repositories",
@@ -48,6 +51,7 @@ describe("openDatabase", () => {
         "sessions",
         "user_model_preferences",
         "users",
+        "verifications",
       ],
     );
   });
@@ -71,7 +75,47 @@ describe("openDatabase", () => {
     const migrations = second.sqlite
       .prepare("SELECT count(*) AS count FROM __drizzle_migrations")
       .get() as { count: number };
-    assert.equal(migrations.count, 1);
+    assert.equal(migrations.count, 2);
+  });
+
+  it("migra usuarios previos, vincula GitHub y normaliza emails duplicados", () => {
+    const directory = mkdtempSync(join(tmpdir(), "manteiner-db-upgrade-"));
+    temporaryDirectories.push(directory);
+    const path = join(directory, "manteiner.db");
+    const legacy = new BetterSqlite3(path);
+    const initialMigration = readFileSync(
+      new URL("./migrations/0000_init.sql", import.meta.url),
+      "utf8",
+    );
+    legacy.exec(initialMigration);
+    legacy.exec(`
+      CREATE TABLE __drizzle_migrations (
+        id SERIAL PRIMARY KEY,
+        hash text NOT NULL,
+        created_at numeric
+      );
+      INSERT INTO __drizzle_migrations (hash, created_at)
+      VALUES ('legacy', 1789483948204);
+    `);
+    const insertUser = legacy.prepare(
+      "INSERT INTO users (id, github_id, github_login, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    );
+    insertUser.run("user-1", 1, "octocat", "Octocat", "Same@Example.com", 1, 1);
+    insertUser.run("user-2", 2, "monalisa", "Mona Lisa", "same@example.com", 1, 1);
+    legacy.close();
+
+    const connection = openDatabase(path);
+    openConnections.push(connection);
+
+    const accounts = connection.sqlite
+      .prepare("SELECT account_id, user_id FROM accounts ORDER BY user_id")
+      .all();
+    assert.deepEqual(accounts, [
+      { account_id: "1", user_id: "user-1" },
+      { account_id: "2", user_id: "user-2" },
+    ]);
+    const emails = connection.sqlite.prepare("SELECT email FROM users ORDER BY id").all();
+    assert.deepEqual(emails, [{ email: "same@example.com" }, { email: null }]);
   });
 
   it("hace cumplir las foreign keys", () => {
@@ -79,9 +123,9 @@ describe("openDatabase", () => {
     assert.throws(() =>
       sqlite
         .prepare(
-          "INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+          "INSERT INTO sessions (id, token, user_id, created_at, updated_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
         )
-        .run("session-1", "user-inexistente", 1, 2),
+        .run("session-1", "token-1", "user-inexistente", 1, 1, 2),
     );
   });
 
@@ -89,9 +133,9 @@ describe("openDatabase", () => {
     const { sqlite } = temporaryDatabase();
     sqlite
       .prepare(
-        "INSERT INTO users (id, github_id, github_login, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, github_id, github_login, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
-      .run("user-1", 1, "octocat", 1, 1);
+      .run("user-1", 1, "octocat", "Octocat", "octocat@example.com", 1, 1);
 
     const insert = sqlite.prepare(
       "INSERT INTO user_model_preferences (id, user_id, repository_id, provider_id, model_id, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, ?)",
@@ -105,9 +149,9 @@ describe("openDatabase", () => {
     const { sqlite } = temporaryDatabase();
     sqlite
       .prepare(
-        "INSERT INTO users (id, github_id, github_login, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, github_id, github_login, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
-      .run("user-1", 1, "octocat", 1, 1);
+      .run("user-1", 1, "octocat", "Octocat", "octocat@example.com", 1, 1);
     sqlite
       .prepare(
         "INSERT INTO repositories (id, user_id, github_repo_id, owner, name, full_name, default_branch, html_url, linked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

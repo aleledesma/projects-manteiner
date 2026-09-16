@@ -27,7 +27,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().max(65535).default(3001),
   HOST: z.string().default("127.0.0.1"),
-  PUBLIC_URL: z.string().default("http://localhost:3001"),
+  PUBLIC_URL: z.url().default("http://localhost:3001"),
+  WEB_URL: z.url().default("http://localhost:5173"),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
@@ -37,6 +38,16 @@ const envSchema = z.object({
 
   MASTER_KEY: masterKey,
   SESSION_SECRET: z.string().min(32, "debe tener al menos 32 caracteres"),
+  GITHUB_OAUTH_CLIENT_ID: z.string().min(1, "es obligatorio"),
+  GITHUB_OAUTH_CLIENT_SECRET: z.string().min(1, "es obligatorio"),
+}).superRefine((env, ctx) => {
+  if (env.NODE_ENV === "production" && new URL(env.PUBLIC_URL).origin !== new URL(env.WEB_URL).origin) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["WEB_URL"],
+      message: "debe compartir origen con PUBLIC_URL en produccion; publica /api con un reverse proxy",
+    });
+  }
 });
 
 export type Config = Readonly<z.infer<typeof envSchema>> & {

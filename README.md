@@ -15,13 +15,14 @@ seguras, devuelve un informe estructurado y genera un PDF, mostrando el progreso
 |------|--------|
 | 0 — Verificación técnica | ✅ cerrada ([hallazgos](./docs/13-hallazgos-spike.md)) |
 | 1 — Esqueleto y persistencia | ✅ cerrada — API, contratos, SQLite y cifrado listos. |
-| 2 a 9 | 🔲 pendientes ([roadmap](./docs/11-roadmap.md)) |
+| 2 — Autenticación | 🟡 implementada — falta validar el recorrido contra una OAuth App real. |
+| 3 a 9 | 🔲 pendientes ([roadmap](./docs/11-roadmap.md)) |
 
-78 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
+85 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
 
 ## Requisitos
 
-- **Node.js 22.6+** (usamos `--env-file` y el test runner nativo)
+- **Node.js 22.12+** (requerido por Vite 8)
 - **Docker** (a partir de la Fase 3)
 
 ## Puesta en marcha
@@ -32,25 +33,34 @@ npm install
 cp .env.example .env
 # Genera los dos secretos obligatorios:
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-# pegalos en MASTER_KEY y SESSION_SECRET
+# pegalos en MASTER_KEY y SESSION_SECRET, y completa las credenciales OAuth de GitHub
+# callback de la OAuth App: http://localhost:3001/api/auth/callback/github
 
+# terminal 1
 npm run dev
+# terminal 2
+npm run dev:web
 ```
 
-La API queda en <http://localhost:3001>. Probá:
+La API queda en <http://localhost:3001> y la web en <http://localhost:5173>. Probá:
 
 ```bash
 curl http://localhost:3001/api/health
 ```
 
-Si falta `MASTER_KEY` o `SESSION_SECRET`, **la API no arranca** y te dice exactamente qué falta.
+Si falta `MASTER_KEY`, `SESSION_SECRET` o una credencial OAuth de GitHub, **la API no arranca** y te dice exactamente qué falta.
 Es deliberado: mejor caer con un mensaje claro que correr sin cifrado.
+
+En producción la SPA y `/api` deben publicarse bajo el mismo origen. El reverse proxy sirve la
+web y dirige `/api/*` a Fastify; `PUBLIC_URL` y `WEB_URL` usan esa misma URL pública.
 
 ## Comandos
 
 | Comando | Qué hace |
 |---------|----------|
 | `npm run dev` | API en modo watch |
+| `npm run dev:web` | React/Vite en modo desarrollo |
+| `npm run build` | Build de los workspaces que lo requieren |
 | `npm test` | Tests de todos los workspaces |
 | `npm run typecheck` | `tsc --noEmit` en todos los workspaces |
 | `npm run print-schema --workspace @manteiner/contracts` | Imprime el JSON Schema del informe |
@@ -61,6 +71,7 @@ Es deliberado: mejor caer con un mensaje claro que correr sin cifrado.
 ```
 apps/
   api/                 Fastify + orquestador + SQLite
+  web/                 React + Vite + cliente de Better Auth, sin diseño visual todavía
 packages/
   contracts/           Contrato del agente: Zod, JSON Schema y prompts versionados
 docs/                  Planificación y decisiones

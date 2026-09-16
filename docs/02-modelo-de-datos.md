@@ -12,7 +12,7 @@
 ## Diagrama de relaciones
 
 ```
-users ──1:N──> provider_credentials
+users ──1:N──> sessions / accounts / provider_credentials
   │
   ├──1:N──> github_installations ──1:N──> repositories
   │                                            │
@@ -36,7 +36,8 @@ CREATE TABLE users (
   github_id         INTEGER NOT NULL UNIQUE,
   github_login      TEXT    NOT NULL,
   name              TEXT,
-  email             TEXT,
+  email             TEXT UNIQUE,
+  email_verified    INTEGER NOT NULL DEFAULT 0,
   avatar_url        TEXT,
   created_at        INTEGER NOT NULL,
   updated_at        INTEGER NOT NULL,
@@ -44,17 +45,22 @@ CREATE TABLE users (
 );
 ```
 
-`github_id` es la identidad estable: el `login` puede cambiar.
+Better Auth administra esta tabla. La identidad externa estable también se conserva en
+`accounts(account_id, provider_id)`; `github_id` y `github_login` quedan disponibles para el
+dominio y la UI.
 
 ### `sessions`
 
-Sesiones de navegador. Cookie `httpOnly` + `secure` + `sameSite=lax` que guarda solo el `id`.
+Sesiones de navegador administradas por Better Auth. La cookie es firmada, `httpOnly`,
+`sameSite=lax` y `secure` en producción.
 
 ```sql
 CREATE TABLE sessions (
-  id           TEXT PRIMARY KEY,           -- valor aleatorio de 32 bytes, hasheado
+  id           TEXT PRIMARY KEY,
+  token        TEXT NOT NULL UNIQUE,
   user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
   expires_at   INTEGER NOT NULL,
   user_agent   TEXT,
   ip           TEXT
@@ -63,7 +69,19 @@ CREATE INDEX idx_sessions_user ON sessions(user_id);
 CREATE INDEX idx_sessions_expires ON sessions(expires_at);
 ```
 
-🟢 Se guarda el **hash** del token de sesión, no el token. Una filtración de la DB no da sesiones válidas.
+🟢 Better Auth firma el token enviado en la cookie con `SESSION_SECRET`. La DB guarda el token
+aleatorio que la librería necesita para resolver y revocar la sesión; una copia del valor de la
+DB no alcanza para fabricar la cookie firmada sin el secreto.
+
+### `accounts` y `verifications`
+
+`accounts` vincula la identidad local con `(provider_id, account_id)`, por ejemplo
+`("github", "583231")`. Sus columnas de tokens existen porque son parte del schema estándar de
+Better Auth, pero hooks de creación y actualización fuerzan `access_token`, `refresh_token` e
+`id_token` a `NULL`: el token OAuth de login se usa para leer el perfil y se descarta.
+
+`verifications` guarda temporalmente el estado de OAuth. Better Auth lo crea con expiración, lo
+valida en el callback y lo consume una sola vez.
 
 ### `github_installations`
 

@@ -27,10 +27,23 @@ Estas se dan por firmes salvo que las cambiemos explícitamente.
 | D16 | El token de GitHub viaja por **stdin**, no por variable de entorno | Las env vars quedan en `docker inspect` y en `/proc/<pid>/environ`; stdin se consume y no persiste. |
 | D17 | El push a la rama principal se impide por **invariante de código**, no por GitHub | El token tiene `contents: write`: GitHub no lo impediría. Lo impiden el nombre de rama computado, el punto único de escritura y una aserción dura. |
 | D18 | `STORE_PATCH_ARTIFACT=false` por defecto | El PR es el registro canónico del diff; guardarlo además duplicaría código del usuario en nuestro disco. |
+| D19 | **Better Auth 1.6** para login y sesiones | Reduce lógica criptográfica propia, integra GitHub + Drizzle/SQLite y mantiene la GitHub App separada. Los hooks descartan los tokens OAuth antes de persistir. |
 
 ---
 
 ## Revisiones registradas
+
+### R7 — Better Auth reemplaza la autenticación propia
+
+**Planteo previo:** implementar manualmente `state`, PKCE, callback, cookies, tokens de sesión,
+expiración y logout.
+
+**Resolución:** Better Auth administra el protocolo OAuth y las tablas `users`, `sessions`,
+`accounts` y `verifications`. Fastify solo adapta Request/Response y expone `/api/me`.
+
+**Límite:** esto no reemplaza la GitHub App de la Fase 3. Además, como el token OAuth de login
+solo sirve para identificar al usuario, hooks lo reemplazan por `NULL` antes de cada escritura
+de `accounts`.
 
 ### R1 — El workspace no puede tocar el disco del host
 

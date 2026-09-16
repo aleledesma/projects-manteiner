@@ -127,9 +127,10 @@ nuestro como el orquestador.
 
 | Amenaza | Mitigación |
 |---------|-----------|
-| CSRF en OAuth | `state` aleatorio de un solo uso en cookie firmada. |
+| CSRF en OAuth | Better Auth valida `state` de un solo uso, PKCE y origen confiable. |
 | CSRF en mutaciones | Cookie `sameSite=lax` + verificación de `Origin` en POST/PATCH/DELETE. |
-| Robo de sesión | Cookie `httpOnly` + `secure`; hash del token en DB; expiración. |
+| Robo de sesión | Cookie firmada, `httpOnly`, `sameSite=lax`, `secure` en producción y expiración a 30 días. |
+| Token OAuth de login en DB | Hooks de Better Auth reemplazan access/refresh/id token por `NULL` antes de crear o actualizar `accounts`. |
 | IDOR (acceder a runs ajenos) | **Toda** consulta filtra por `user_id`. Nunca `WHERE id = ?` a secas. |
 | Path traversal en descargas | Resolver la ruta y verificar que quede dentro de `ARTIFACTS_DIR`. |
 | XSS vía contenido del agente | El markdown se renderiza con sanitización; nada de `dangerouslySetInnerHTML` sin limpiar. ⚠️ El agente genera texto a partir de contenido del repo: es entrada no confiable. |

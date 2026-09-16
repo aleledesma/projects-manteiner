@@ -76,12 +76,13 @@ contrato del agente es viable tal como está escrito.
 
 ---
 
-## Fase 2 — Autenticación
+## Fase 2 — Autenticación 🟡 IMPLEMENTADA, PENDIENTE DE SMOKE TEST REAL
 
-- [ ] OAuth de GitHub para login, con `state` y cookie de sesión.
-- [ ] `sessions` en DB con token hasheado y expiración.
-- [ ] `GET /api/me`.
-- [ ] Web mínima: pantalla de login y un dashboard vacío que muestra el usuario.
+- [x] OAuth de GitHub con Better Auth, `state`, PKCE y cookie firmada.
+- [x] `users`, `sessions`, `accounts` y `verifications` en SQLite mediante Drizzle.
+- [x] `GET /api/me` con estado de onboarding.
+- [x] Web mínima sin estilos: login, usuario actual y logout.
+- [ ] Smoke test completo contra una OAuth App real de GitHub.
 
 **Entregable:** se puede iniciar y cerrar sesión con GitHub.
 
