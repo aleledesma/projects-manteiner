@@ -17,6 +17,16 @@
 
 ## Endpoints
 
+### Sistema
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/api/health` | Estado de la API, versión del contrato y disponibilidad de Docker. |
+
+Docker apagado se informa como `{ "docker": { "available": false } }` sin marcar la API como
+caída: autenticación y configuración siguen funcionando, pero antes de ejecutar un run se usará
+`DOCKER_UNAVAILABLE`.
+
 ### Autenticación
 
 | Método | Ruta | Descripción |

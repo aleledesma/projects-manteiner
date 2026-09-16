@@ -50,6 +50,8 @@ const envSchema = z.object({
 
   DATABASE_PATH: z.string().default("./data/manteiner.db"),
   ARTIFACTS_DIR: z.string().default("./data/artifacts"),
+  DOCKER_SOCKET: z.string().min(1, "no puede estar vacio").optional(),
+  DOCKER_API_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(3_000),
 
   MASTER_KEY: masterKey,
   SESSION_SECRET: z.string().min(32, "debe tener al menos 32 caracteres"),

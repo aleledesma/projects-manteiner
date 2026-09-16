@@ -16,13 +16,19 @@ import { githubRoutes } from "./routes/github.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { createAuth, type AppAuth } from "./services/auth.ts";
 import { CredentialCrypto } from "./services/credential-crypto.ts";
+import { DockerService, type DockerClient } from "./services/docker.ts";
 import { GithubAppService } from "./services/github-app.ts";
 
-export function buildServer(config: Config): FastifyInstance {
+export interface ServerDependencies {
+  dockerClient?: DockerClient;
+}
+
+export function buildServer(config: Config, dependencies: ServerDependencies = {}): FastifyInstance {
   const database = openDatabase(config.DATABASE_PATH);
   const credentialCrypto = new CredentialCrypto(masterKeyBytes(config));
   const auth = createAuth(config, database.db);
   const githubApp = new GithubAppService(config);
+  const docker = new DockerService(config, dependencies.dockerClient);
   const app = Fastify({
     logger: {
       level: config.LOG_LEVEL,
@@ -61,6 +67,7 @@ export function buildServer(config: Config): FastifyInstance {
   app.decorate("credentialCrypto", credentialCrypto);
   app.decorate("auth", auth);
   app.decorate("githubApp", githubApp);
+  app.decorate("docker", docker);
   app.addHook("onClose", () => database.close());
 
   registerErrorHandler(app);
@@ -80,5 +87,6 @@ declare module "fastify" {
     credentialCrypto: CredentialCrypto;
     auth: AppAuth;
     githubApp: GithubAppService;
+    docker: DockerService;
   }
 }

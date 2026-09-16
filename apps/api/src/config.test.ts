@@ -33,6 +33,8 @@ describe("loadConfig", () => {
     assert.equal(config.NODE_ENV, "development");
     assert.equal(config.PORT, 3001);
     assert.equal(config.LOG_LEVEL, "info");
+    assert.equal(config.DOCKER_SOCKET, undefined);
+    assert.equal(config.DOCKER_API_TIMEOUT_MS, 3_000);
     assert.equal(config.isProduction, false);
   });
 
@@ -40,6 +42,15 @@ describe("loadConfig", () => {
     const config = loadConfig(env({ PORT: "8080" }));
     assert.equal(config.PORT, 8080);
     assert.equal(typeof config.PORT, "number");
+  });
+
+  it("valida la configuracion de Docker", () => {
+    const config = loadConfig(
+      env({ DOCKER_SOCKET: "/custom/docker.sock", DOCKER_API_TIMEOUT_MS: "5000" }),
+    );
+    assert.equal(config.DOCKER_SOCKET, "/custom/docker.sock");
+    assert.equal(config.DOCKER_API_TIMEOUT_MS, 5_000);
+    assert.throws(() => loadConfig(env({ DOCKER_API_TIMEOUT_MS: "0" })), ConfigError);
   });
 
   it("no arranca si falta MASTER_KEY", () => {

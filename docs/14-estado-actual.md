@@ -8,8 +8,8 @@ primero para retomar el trabajo.
 ## Resumen en una línea
 
 Fases 0, 1 y 2 cerradas. En Fase 3 funcionan y fueron verificados contra GitHub real el callback
-de la GitHub App, el listado de repos autorizados y su vinculación; todavía no se implementaron
-clonado, Docker ni webhooks.
+de la GitHub App, el listado de repos autorizados y su vinculación. La conexión base a Docker
+está implementada; todavía no se crean contenedores ni se clonan repositorios.
 
 ## Qué está hecho y funcionando
 
@@ -18,19 +18,20 @@ clonado, Docker ni webhooks.
 | Planificación completa (docs 00-13) | ✅ | 5 revisiones registradas |
 | Fase 0 — spikes de verificación | ✅ cerrada | [13](./13-hallazgos-spike.md) |
 | Monorepo npm workspaces | ✅ | `apps/api`, `apps/web`, `packages/contracts`, `spikes` |
-| API Fastify + config + errores + logging + SQLite + cifrado + auth | ✅ | 37 tests |
+| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | 41 tests |
 | `packages/contracts` | ✅ | 50 tests |
 | Contrato base verificado contra opencode real | ✅ | I5 cerrado; hardening posterior cubierto localmente |
 | Base de datos SQLite | ✅ | 15 tablas + 3 migraciones |
 | Cifrado AES-256-GCM | ✅ | IV aleatorio + AAD + 10 tests específicos |
 | Fase 2 — Better Auth + web mínima | ✅ cerrada | Smoke test real completado |
 | Fase 3 — GitHub App y repositorios | 🟡 | Instalación/listado/vinculación verificados contra GitHub real |
+| Conexión Dockerode | ✅ | Detección local + `ping`/`version`; `/api/health` expone solo disponibilidad |
 | Fases 4 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 
 ```bash
-npm install && npm test        # 87/87
+npm install && npm test        # 91/91
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
@@ -39,8 +40,7 @@ npm run dev                    # curl http://localhost:3001/api/health
 
 ### Continuar Fase 3 — base de Docker y clonado
 
-- Agregar configuración y conexión a Docker Desktop mediante Dockerode.
-- Después implementar tokens `contents: read` restringidos por repositorio.
+- Implementar tokens `contents: read` restringidos por repositorio.
 - Crear la imagen `manteiner-git`, el clon por stdin y el volumen efímero.
 
 ### Decisión abierta que queda
@@ -102,6 +102,7 @@ apps/api/src/
   routes/github.ts Instalacion de GitHub App, repos disponibles y vinculacion.
   services/auth.ts Configura GitHub, sesiones y descarte de tokens OAuth.
   services/github-app.ts JWT de App, tokens efimeros y llamadas a GitHub.
+  services/docker.ts Conexion al daemon, estado y error DOCKER_UNAVAILABLE.
   services/credential-crypto.ts  AES-256-GCM para credenciales de proveedores.
   errors.ts       AppError + handler unico. Forma { error: { code, message } }.
   server.ts       buildServer(config) -> NO escucha, para que los tests usen inject().
@@ -140,7 +141,7 @@ apps/web/src/
 ## Comandos útiles
 
 ```bash
-npm test                                              # 87 tests
+npm test                                              # 91 tests
 npm run typecheck
 npm run dev                                           # API en :3001
 npm run dev:web                                       # web en :5173

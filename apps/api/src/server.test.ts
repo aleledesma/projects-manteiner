@@ -50,7 +50,13 @@ describe("servidor", () => {
       GITHUB_APP_PRIVATE_KEY_BASE64: Buffer.from(githubPrivateKey).toString("base64"),
       DATABASE_PATH: join(temporaryDirectory, "manteiner.db"),
     } as NodeJS.ProcessEnv);
-    app = buildServer(config);
+    app = buildServer(config, {
+      dockerClient: {
+        ping: async () => "OK",
+        version: async () =>
+          ({ Version: "28.0.0", ApiVersion: "1.48", Os: "linux", Arch: "amd64" }) as never,
+      },
+    });
   });
 
   after(async () => {
@@ -67,6 +73,9 @@ describe("servidor", () => {
     assert.equal(body.env, "test");
     assert.equal(body.contractSchemaVersion, "1.0");
     assert.equal(typeof body.uptimeMs, "number");
+    assert.deepEqual(body.docker, {
+      available: true,
+    });
   });
 
   it("una ruta inexistente devuelve la forma de error uniforme", async () => {
