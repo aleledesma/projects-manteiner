@@ -1,0 +1,98 @@
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+
+/* ============================================================
+   Manteiner — tokens de diseño. Ver docs/15-diseno-ui.md
+
+   Regla de color: ningún color saturado ocupa área. Los hues
+   viven en lavados de 6-13%, bordes de 20-26% y texto apagado.
+   Sin glows, sin gradientes brillantes.
+   ============================================================ */
+
+@theme {
+  /* superficies */
+  --color-canvas: #0a0b0d;
+  --color-sunken: #060709;
+  --color-surface: #101216;
+  --color-raised: #16191f;
+  --color-overlay: #1a1e25;
+
+  /* texto */
+  --color-ink: #e9ecf1;
+  --color-ink-muted: #98a0ad;
+  --color-ink-faint: #626a78;
+
+  /* acento: indigo apagado, no violeta */
+  --color-accent: #8189c8;
+  --color-accent-fill: #575e9c;
+  --color-accent-hover: #636bab;
+  --color-accent-text: #a9b0dc;
+
+  /* semánticos: son información, no decoración */
+  --color-ok: #7cb194;
+  --color-sev-high: #cf7c83;
+  --color-sev-medium: #cfa469;
+  --color-sev-low: #7fa3c4;
+  --color-sev-info: #78818f;
+  --color-warn-conf: #b79e62;
+
+  /* tipografía */
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* motion */
+  --animate-rise: rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
+    color: #fff;
+  }
+}
+
+/* Fondos ambientales del shell de entrada. Decorativos y muy tenues:
+   se definen acá porque son gradientes con máscara, no utilidades sueltas. */
+@utility bg-ambient-glow {
+  background: radial-gradient(ellipse at center, rgb(129 137 200 / 0.035), transparent 66%);
+}
+
+@utility bg-dot-grid {
+  background-image: radial-gradient(rgb(255 255 255 / 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+  -webkit-mask-image: radial-gradient(ellipse 44% 40% at 50% 46%, #000 6%, transparent 72%);
+  mask-image: radial-gradient(ellipse 44% 40% at 50% 46%, #000 6%, transparent 72%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
