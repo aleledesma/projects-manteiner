@@ -41,3 +41,64 @@ export function Spinner(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function ReposIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true" {...props}>
+      <rect x="2.2" y="2.2" width="11.6" height="11.6" rx="3" />
+      <path d="M5.4 5.6h5.2M5.4 8h5.2M5.4 10.4h3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function RunsIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true" {...props}>
+      <circle cx="8" cy="8" r="5.8" />
+      <path d="M8 4.8V8l2.2 1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function SettingsIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true" {...props}>
+      <circle cx="8" cy="8" r="2.2" />
+      <circle cx="8" cy="8" r="5.9" strokeDasharray="2.6 2.6" />
+    </svg>
+  );
+}
+
+export function ChevronIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M3.5 7.5L6 5l2.5 2.5" />
+    </svg>
+  );
+}
+
+export function SignOutIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M6.2 13.4H3.6a1.2 1.2 0 01-1.2-1.2V3.8a1.2 1.2 0 011.2-1.2h2.6M10 11l3-3-3-3M13 8H6.2" />
+    </svg>
+  );
+}
