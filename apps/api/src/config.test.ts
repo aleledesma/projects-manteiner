@@ -46,6 +46,11 @@ describe("loadConfig", () => {
     assert.throws(() => loadConfig(env({ MASTER_KEY: larga })), ConfigError);
   });
 
+  it("rechaza base64 malformado aunque decodifique a 32 bytes", () => {
+    assert.throws(() => loadConfig(env({ MASTER_KEY: `${claveValida}!` })), ConfigError);
+    assert.throws(() => loadConfig(env({ MASTER_KEY: claveValida.slice(0, -1) })), ConfigError);
+  });
+
   it("rechaza un SESSION_SECRET corto", () => {
     assert.throws(() => loadConfig(env({ SESSION_SECRET: "corto" })), ConfigError);
   });

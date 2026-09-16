@@ -14,10 +14,10 @@ seguras, devuelve un informe estructurado y genera un PDF, mostrando el progreso
 | Fase | Estado |
 |------|--------|
 | 0 — Verificación técnica | ✅ cerrada ([hallazgos](./docs/13-hallazgos-spike.md)) |
-| 1 — Esqueleto y persistencia | 🚧 85% — API, contratos y SQLite listos. **Falta el cifrado.** |
+| 1 — Esqueleto y persistencia | ✅ cerrada — API, contratos, SQLite y cifrado listos. |
 | 2 a 9 | 🔲 pendientes ([roadmap](./docs/11-roadmap.md)) |
 
-67 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
+78 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
 
 ## Requisitos
 

@@ -48,17 +48,17 @@ las correcciones aplicadas a los documentos (revisiones R3 y R4).
 
 ---
 
-## Fase 1 — Esqueleto y persistencia
+## Fase 1 — Esqueleto y persistencia ✅ CERRADA
 
 - [x] Monorepo con workspaces: `apps/api`, `packages/contracts`. (`apps/web` llega en la Fase 2.)
 - [x] Fastify con healthcheck, logging estructurado y manejo de errores uniforme.
 - [x] Config por entorno validada con Zod al arrancar (si falta `MASTER_KEY`, no arranca).
 - [x] **`packages/contracts`**: Zod del informe de [06](./06-agente-mantenimiento.md) + derivación
-      del JSON Schema + prompt versionado. 46 tests.
+      del JSON Schema + prompt versionado. 50 tests.
 - [x] **Cerrar I5** ✅: el schema (6.279 bytes) fue aceptado y el modelo devolvió un informe
       conforme. Ver [13](./13-hallazgos-spike.md). De paso quedaron cerradas I4 e I12.
 - [x] Drizzle + better-sqlite3 con el DDL de [02](./02-modelo-de-datos.md) y primera migración.
-- [ ] Servicio de cifrado AES-256-GCM con AAD + tests.
+- [x] Servicio de cifrado AES-256-GCM con AAD inequívoco + tests.
 
 ### Por qué `packages/contracts` se adelantó desde la Fase 5
 

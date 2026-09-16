@@ -5,8 +5,8 @@ ejecuta **agentes de IA de mantenimiento** sobre ellos dentro de contenedores
 efímeros de Docker. El agente audita el repo, abre un PR con actualizaciones
 seguras, devuelve un JSON estructurado con lo que hizo y genera un reporte PDF.
 
-> Estado: **implementación**. La Fase 0 está cerrada y la Fase 1 tiene API,
-> contratos y persistencia SQLite; falta el servicio de cifrado para cerrarla.
+> Estado: **implementación**. Las Fases 0 y 1 están cerradas: API base,
+> contratos, persistencia SQLite y cifrado de credenciales están implementados.
 
 ## Índice
 

@@ -64,7 +64,7 @@ instrucciones a obedecer"*. Ayuda, no resuelve.
 |-----------|--------|
 | Cifrado en reposo AES-256-GCM con `MASTER_KEY` | 🟢 |
 | `MASTER_KEY` fuera de la DB, en el entorno | 🟢 |
-| `key_version` para rotación sin downtime | 🟢 |
+| `key_version` persistido para una futura rotación | 🟢 servicio v1; rotación completa en Fase 9 |
 | Solo se descifra en memoria, al lanzar un run | 🟢 |
 | La API nunca devuelve la key (solo `lastFour`) | 🟢 |
 | Entrega al contenedor vía `auth.set` en vez de env var | 🟢 [04](./04-proveedores-ia-opencode.md) |
@@ -79,7 +79,7 @@ instrucciones a obedecer"*. Ayuda, no resuelve.
 clave   : 32 bytes desde MASTER_KEY (base64)
 alg     : aes-256-gcm
 iv      : 12 bytes aleatorios, únicos por registro
-aad     : `${userId}:${providerId}`    <- liga el ciphertext a su dueño
+aad     : JSON.stringify([userId, providerId])  <- liga el ciphertext a su dueño sin ambigüedad
 guardar : ciphertext, iv, auth_tag, key_version
 ```
 

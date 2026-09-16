@@ -23,7 +23,7 @@ Estas se dan por firmes salvo que las cambiemos explícitamente.
 | D13 | ~~v1 sin proveedores OAuth~~ → **revisada, ver D13bis**. v1 sigue **sin** auditoría de seguridad. | — |
 | D13bis | **v1 soporta OpenAI por OAuth (device code), implementado en nuestra API** | Es el proveedor que hace falta para probar. La investigación confirmó que `auth.set` acepta `type: "oauth"` y que opencode tiene un flujo device code headless cuyas constantes y endpoints son públicos. **No hace falta ningún contenedor de autenticación.** |
 | D14 | Un solo run activo por repositorio | Evita PRs duplicados y carreras sobre el workspace. |
-| D15 | Cifrado AES-256-GCM con AAD = `userId:providerId` | Impide reutilizar un ciphertext movido entre usuarios. |
+| D15 | Cifrado AES-256-GCM con AAD = `JSON.stringify([userId, providerId])` | Impide reutilizar un ciphertext movido entre usuarios sin colisiones por delimitadores. |
 | D16 | El token de GitHub viaja por **stdin**, no por variable de entorno | Las env vars quedan en `docker inspect` y en `/proc/<pid>/environ`; stdin se consume y no persiste. |
 | D17 | El push a la rama principal se impide por **invariante de código**, no por GitHub | El token tiene `contents: write`: GitHub no lo impediría. Lo impiden el nombre de rama computado, el punto único de escritura y una aserción dura. |
 | D18 | `STORE_PATCH_ARTIFACT=false` por defecto | El PR es el registro canónico del diff; guardarlo además duplicaría código del usuario en nuestro disco. |

@@ -133,7 +133,8 @@ CREATE TABLE provider_credentials (
 );
 ```
 
-🟢 **El texto plano de la credencial nunca se lee fuera del momento de lanzar un run.**
+🟢 Implementado en `services/credential-crypto.ts`: el texto plano solo existe en memoria al
+conectar la credencial y al preparar un run.
 Las respuestas de la API exponen solo `provider_id`, `label`, `last_four` y `status`.
 
 El `ciphertext` guarda el payload completo que espera `auth.set` de opencode, que varía según

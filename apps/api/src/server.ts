@@ -8,13 +8,15 @@
 
 import Fastify, { type FastifyInstance } from "fastify";
 
-import type { Config } from "./config.ts";
+import { masterKeyBytes, type Config } from "./config.ts";
 import { openDatabase, type AppDatabase, type DatabaseConnection } from "./db/client.ts";
 import { registerErrorHandler } from "./errors.ts";
 import { healthRoutes } from "./routes/health.ts";
+import { CredentialCrypto } from "./services/credential-crypto.ts";
 
 export function buildServer(config: Config): FastifyInstance {
   const database = openDatabase(config.DATABASE_PATH);
+  const credentialCrypto = new CredentialCrypto(masterKeyBytes(config));
   const app = Fastify({
     logger: {
       level: config.LOG_LEVEL,
@@ -50,6 +52,7 @@ export function buildServer(config: Config): FastifyInstance {
   app.decorate("config", config);
   app.decorate("db", database.db);
   app.decorate("database", database);
+  app.decorate("credentialCrypto", credentialCrypto);
   app.addHook("onClose", () => database.close());
 
   registerErrorHandler(app);
@@ -64,5 +67,6 @@ declare module "fastify" {
     config: Config;
     db: AppDatabase;
     database: DatabaseConnection;
+    credentialCrypto: CredentialCrypto;
   }
 }

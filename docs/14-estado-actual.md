@@ -1,14 +1,14 @@
 # 14 — Estado actual (handoff)
 
-**Fecha: 2026-09-15.** Punto de traspaso a otro agente. Este documento es el que hay que leer
+**Fecha: 2026-09-16.** Punto de traspaso a otro agente. Este documento es el que hay que leer
 primero para retomar el trabajo.
 
 ---
 
 ## Resumen en una línea
 
-Fase 0 cerrada, Fase 1 al 85%: la API arranca, el contrato base fue verificado contra opencode
-real y después endurecido con pruebas locales, y SQLite está integrado. Falta el cifrado.
+Fases 0 y 1 cerradas: la API arranca, el contrato está endurecido, SQLite está integrado y las
+credenciales se cifran con AES-256-GCM. El próximo paso es OAuth de GitHub, cuando se indique.
 
 ## Qué está hecho y funcionando
 
@@ -17,29 +17,27 @@ real y después endurecido con pruebas locales, y SQLite está integrado. Falta 
 | Planificación completa (docs 00-13) | ✅ | 5 revisiones registradas |
 | Fase 0 — spikes de verificación | ✅ cerrada | [13](./13-hallazgos-spike.md) |
 | Monorepo npm workspaces | ✅ | `apps/api`, `packages/contracts`, `spikes` |
-| API Fastify + config + errores + logging + SQLite | ✅ | 17 tests |
+| API Fastify + config + errores + logging + SQLite + cifrado | ✅ | 28 tests |
 | `packages/contracts` | ✅ | 50 tests |
 | Contrato base verificado contra opencode real | ✅ | I5 cerrado; hardening posterior cubierto localmente |
 | Base de datos SQLite | ✅ | 11 tablas + migración inicial |
-| Cifrado AES-256-GCM | 🔲 | **lo que sigue** |
+| Cifrado AES-256-GCM | ✅ | IV aleatorio + AAD + 10 tests específicos |
 | Fases 2 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 
 ```bash
-npm install && npm test        # 67/67
+npm install && npm test        # 78/78
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
 ## Lo que sigue, en orden
 
-### 1.4.b — Cifrado (lo inmediato)
+### Fase 2 — OAuth de GitHub (esperar indicación)
 
-- Servicio de cifrado AES-256-GCM con **AAD = `userId:providerId`** ([10](./10-seguridad.md)).
-  El test importante: que un ciphertext movido de un usuario a otro **falle al descifrar**.
-
-Con eso se cierra la Fase 1. Después, [Fase 2](./11-roadmap.md) (login GitHub).
+- OAuth de GitHub para login, sesiones hasheadas y `GET /api/me`.
+- No comenzar hasta que el usuario lo indique.
 
 ### Decisión abierta que queda
 
@@ -96,6 +94,7 @@ apps/api/src/
   db/client.ts    Abre SQLite, aplica PRAGMAs y migraciones, y cierra la conexion.
   db/schema.ts    Schema Drizzle de las 11 tablas.
   db/migrations/ Primera migracion SQL versionada.
+  services/credential-crypto.ts  AES-256-GCM para credenciales de proveedores.
   errors.ts       AppError + handler unico. Forma { error: { code, message } }.
   server.ts       buildServer(config) -> NO escucha, para que los tests usen inject().
   index.ts        Entrypoint: valida config, arranca, maneja SIGTERM/SIGINT.
@@ -129,7 +128,7 @@ spikes/src/
 ## Comandos útiles
 
 ```bash
-npm test                                              # 67 tests
+npm test                                              # 78 tests
 npm run typecheck
 npm run dev                                           # API en :3001
 

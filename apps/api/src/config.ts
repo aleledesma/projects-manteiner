@@ -14,7 +14,8 @@ const masterKey = z
   .refine(
     (v) => {
       try {
-        return Buffer.from(v, "base64").length === 32;
+        const decoded = Buffer.from(v, "base64");
+        return decoded.length === 32 && decoded.toString("base64") === v;
       } catch {
         return false;
       }
