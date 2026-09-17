@@ -38,6 +38,13 @@ const repositorySchema = z.object({
 const repositoryListSchema = z.object({
   repositories: z.array(repositorySchema),
 });
+const repositoryCloneSchema = z.object({
+  id: z.number().int().positive(),
+  owner: z.object({ login: z.string() }),
+  name: z.string(),
+  default_branch: z.string(),
+  size: z.number().int().nonnegative(),
+});
 
 const oauthTokenSchema = z.object({
   access_token: z.string().min(1),
@@ -51,6 +58,7 @@ const organizationMembershipSchema = z.object({
 
 export type GithubInstallation = z.infer<typeof installationSchema>;
 export type GithubRepository = z.infer<typeof repositorySchema>;
+export type GithubCloneRepository = z.infer<typeof repositoryCloneSchema>;
 
 export class GithubAppService {
   private readonly privateKey;
@@ -164,6 +172,29 @@ export class GithubAppService {
       },
     );
     return accessTokenSchema.parse(await response.json()).token;
+  }
+
+  async getRepositoryForClone(token: string, repositoryId: number): Promise<GithubCloneRepository> {
+    const response = await this.request(`${API_BASE}/repositories/${repositoryId}`, {
+      headers: this.githubHeaders(token),
+    });
+    const result = repositoryCloneSchema.safeParse(await response.json());
+    if (!result.success || result.data.id !== repositoryId) {
+      throw new AppError(
+        "GITHUB_API_ERROR",
+        "GitHub devolvio datos invalidos para el repositorio.",
+        502,
+      );
+    }
+    return result.data;
+  }
+
+  async revokeInstallationToken(token: string): Promise<void> {
+    const response = await this.fetch(`${API_BASE}/installation/token`, {
+      method: "DELETE",
+      headers: this.githubHeaders(token),
+    });
+    if (!response.ok && response.status !== 404) throw this.apiError(response.status);
   }
 
   createAppJwt(now = Math.floor(Date.now() / 1000)): string {

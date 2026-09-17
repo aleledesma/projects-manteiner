@@ -10,7 +10,8 @@ primero para retomar el trabajo.
 Fases 0, 1 y 2 cerradas. En Fase 3 funcionan y fueron verificados contra GitHub real el callback
 de la GitHub App, el listado de repos autorizados y su vinculación mediante la consola del
 navegador; la UI se pospuso. La conexión base a Docker, el token de clon restringido y la imagen
-`manteiner-git` están implementados; todavía no se orquesta el clon desde la API.
+`manteiner-git` están implementados. La API ya valida el tamaño, clona en un volumen efímero con
+Dockerode, entrega ese volumen al siguiente paso y garantiza su limpieza en `finally`.
 
 ## Qué está hecho y funcionando
 
@@ -19,7 +20,7 @@ navegador; la UI se pospuso. La conexión base a Docker, el token de clon restri
 | Planificación completa (docs 00-13) | ✅ | 5 revisiones registradas |
 | Fase 0 — spikes de verificación | ✅ cerrada | [13](./13-hallazgos-spike.md) |
 | Monorepo npm workspaces | ✅ | `apps/api`, `apps/web`, `packages/contracts`, `spikes` |
-| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | 43 tests |
+| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | 53 tests |
 | `packages/contracts` | ✅ | 50 tests |
 | Contrato base verificado contra opencode real | ✅ | I5 cerrado; hardening posterior cubierto localmente |
 | Base de datos SQLite | ✅ | 15 tablas + 3 migraciones |
@@ -27,25 +28,28 @@ navegador; la UI se pospuso. La conexión base a Docker, el token de clon restri
 | Fase 2 — Better Auth + web mínima | ✅ cerrada | Smoke test real completado |
 | Fase 3 — GitHub App y repositorios | 🟡 | Backend verificado; UI de repos diferida; clon real verificado |
 | Conexión Dockerode | ✅ | Detección local + `ping`/`version`; `/api/health` expone solo disponibilidad |
-| Token de clon por repositorio | ✅ | `contents: read`, un `repository_id`, sin caché ni persistencia |
+| Token de clon por repositorio | ✅ | `contents: read`, un `repository_id`, sin caché; revocado tras clonar |
 | Imagen `manteiner-git` | ✅ | Build y clon real verificados; corre como UID 10001 |
+| Workspace efímero | ✅ | Tamaño previo + Dockerode + callback + limpieza real verificada |
 | Fases 4 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 
 ```bash
-npm ci && npm test             # 93/93
+npm ci && npm test             # 103/103
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
 ## Lo que sigue, en orden
 
-### Continuar Fase 3 — orquestar el clonado
+### Resolver la sincronización de repositorios
 
-- Crear y destruir el volumen efímero desde Dockerode.
-- Ejecutar `manteiner-git` pasando el token por stdin y capturar `base_sha`/`size_kb`.
-- Consultar el tamaño del repositorio antes del clon y aplicar `MAX_REPO_SIZE_KB`.
+- Resolver A5: webhooks en v1 o re-sincronización on-demand.
+- Después, avanzar con proveedores de IA y la ejecución del agente.
+
+I9 (calibración del tamaño) e I10 (comprobación de que el token no aparece en `/proc`) quedan
+diferidos hasta que el flujo de ejecución completo sea funcional; no bloquean el desarrollo actual.
 
 ### Decisión abierta que queda
 
@@ -107,6 +111,7 @@ apps/api/src/
   services/auth.ts Configura GitHub, sesiones y descarte de tokens OAuth.
   services/github-app.ts JWT de App, tokens efimeros y llamadas a GitHub.
   services/docker.ts Conexion al daemon, estado y error DOCKER_UNAVAILABLE.
+  services/repository-workspace.ts Tamaño, volumen, clon Dockerode y limpieza garantizada.
   services/credential-crypto.ts  AES-256-GCM para credenciales de proveedores.
   errors.ts       AppError + handler unico. Forma { error: { code, message } }.
   server.ts       buildServer(config) -> NO escucha, para que los tests usen inject().
@@ -149,7 +154,7 @@ docker/git/
 ## Comandos útiles
 
 ```bash
-npm test                                              # 93 tests
+npm test                                              # 103 tests
 npm run typecheck
 npm run dev                                           # API en :3001
 npm run dev:web                                       # web en :5173

@@ -83,3 +83,4 @@ git -C /work/repo remote remove origin
 git -C /work/repo config --unset-all http.extraHeader 2>/dev/null || true
 git -C /work/repo rev-parse HEAD > /work/base_sha
 du -sk /work/repo | awk '{print $1}' > /work/size_kb
+printf '{"baseSha":"%s","sizeKb":%s}\n' "$(cat /work/base_sha)" "$(cat /work/size_kb)"

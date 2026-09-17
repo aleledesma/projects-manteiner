@@ -35,6 +35,9 @@ describe("loadConfig", () => {
     assert.equal(config.LOG_LEVEL, "info");
     assert.equal(config.DOCKER_SOCKET, undefined);
     assert.equal(config.DOCKER_API_TIMEOUT_MS, 3_000);
+    assert.equal(config.GIT_IMAGE, "manteiner-git:0.1.0");
+    assert.equal(config.MAX_REPO_SIZE_KB, 2_000_000);
+    assert.equal(config.CLONE_TIMEOUT_MS, 300_000);
     assert.equal(config.isProduction, false);
   });
 
@@ -46,11 +49,23 @@ describe("loadConfig", () => {
 
   it("valida la configuracion de Docker", () => {
     const config = loadConfig(
-      env({ DOCKER_SOCKET: "/custom/docker.sock", DOCKER_API_TIMEOUT_MS: "5000" }),
+      env({
+        DOCKER_SOCKET: "/custom/docker.sock",
+        DOCKER_API_TIMEOUT_MS: "5000",
+        GIT_IMAGE: "custom-git:1.2.3",
+        MAX_REPO_SIZE_KB: "1000",
+        CLONE_TIMEOUT_MS: "15000",
+      }),
     );
     assert.equal(config.DOCKER_SOCKET, "/custom/docker.sock");
     assert.equal(config.DOCKER_API_TIMEOUT_MS, 5_000);
+    assert.equal(config.GIT_IMAGE, "custom-git:1.2.3");
+    assert.equal(config.MAX_REPO_SIZE_KB, 1_000);
+    assert.equal(config.CLONE_TIMEOUT_MS, 15_000);
     assert.throws(() => loadConfig(env({ DOCKER_API_TIMEOUT_MS: "0" })), ConfigError);
+    assert.throws(() => loadConfig(env({ GIT_IMAGE: "   " })), ConfigError);
+    assert.throws(() => loadConfig(env({ MAX_REPO_SIZE_KB: "0" })), ConfigError);
+    assert.throws(() => loadConfig(env({ CLONE_TIMEOUT_MS: "999" })), ConfigError);
   });
 
   it("no arranca si falta MASTER_KEY", () => {

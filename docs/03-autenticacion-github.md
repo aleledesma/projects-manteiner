@@ -144,8 +144,8 @@ la instalación. Se cachea en memoria por `installation_id` hasta cinco minutos 
 expiración. No permite leer contenido ni escribir repositorios.
 
 🟢 El clon usa un token dedicado con `contents: read`, restringido por `repository_ids` a un
-único repositorio. Se genera bajo demanda, no se cachea ni persiste y se descarta después de
-entregarlo al contenedor. La publicación pedirá más adelante otro token fresco con
+único repositorio. Se genera bajo demanda, no se cachea ni persiste y se revoca después del
+clon, antes de entregar el volumen al siguiente contenedor. La publicación pedirá otro token fresco con
 `contents: write` y `pull_requests: write`, también limitado al mismo repositorio.
 
 ### Dónde se usa el token

@@ -184,6 +184,7 @@ hace `docker rm` de los contenedores etiquetados `manteiner.run=*` que hayan que
 | `DOCKER_SOCKET` | Override opcional; Dockerode respeta `DOCKER_HOST` o descubre el socket local. |
 | `DOCKER_API_TIMEOUT_MS` | Timeout para llamadas al daemon. Default `3000`. |
 | `AGENT_IMAGE`, `GIT_IMAGE` | Tags de las dos imágenes, ej. `manteiner-agent:0.1.0`. |
+| `CLONE_TIMEOUT_MS` | Tiempo máximo del contenedor de clonado. Default `300000` (5 min). |
 | `WORKSPACE_BACKEND` | `disk` (default) o `tmpfs`. Ver [05](./05-ejecucion-en-docker.md). |
 | `MAX_REPO_SIZE_KB` | Rechaza repos más grandes antes de clonar. Default `2000000`. |
 | `WORKSPACE_SIZE` | Solo con `tmpfs`: tamaño del volumen en RAM. Default `2g`. |

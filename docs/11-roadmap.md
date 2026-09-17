@@ -99,14 +99,16 @@ contrato del agente es viable tal como está escrito.
 - [x] Token `contents: read` restringido por repo para clonado, sin caché ni persistencia.
 - [ ] Token restringido por repo para publicación (se implementa junto con los PR en Fase 7).
 - [x] Imagen `manteiner-git` + `clone.sh`, con token por stdin/FIFO y limpieza del remote.
-- [ ] Chequeo de tamaño del repo previo al clon; creación y destrucción del volumen.
+- [x] Chequeo de tamaño previo; volumen efímero; clon por Dockerode y limpieza en `finally`.
 - [ ] Webhooks con verificación de firma (o sincronización on-demand si se pospone).
 
 **Criterios de aceptación reubicados desde el spike 3:**
 
-- [ ] I10 — el token pasado por stdin **no** aparece en `docker inspect` ni en `/proc/<pid>/environ`.
-- [ ] El volumen sobrevive entre contenedores secuenciales y no queda nada tras `docker volume rm`.
-- [ ] I9 — medir cuánto ocupa un clon `--depth 1` de repos reales, para calibrar `MAX_REPO_SIZE_KB`.
+- [>] I10 — el token pasado por stdin **no** aparece en `docker inspect` ni en `/proc/<pid>/environ`.
+      **Diferido:** verificar cuando el flujo completo ya sea funcional.
+- [x] El volumen sobrevive entre contenedores secuenciales y no queda nada tras `docker volume rm`.
+- [>] I9 — medir cuánto ocupa un clon `--depth 1` de repos reales, para calibrar `MAX_REPO_SIZE_KB`.
+      **Diferido:** calibrar después de completar el flujo funcional.
 
 **Entregable:** vincular un repo, clonarlo en un volumen efímero desde la API, y comprobar que
 el repositorio no existe en ningún punto del filesystem del host.

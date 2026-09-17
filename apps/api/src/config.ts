@@ -52,6 +52,9 @@ const envSchema = z.object({
   ARTIFACTS_DIR: z.string().default("./data/artifacts"),
   DOCKER_SOCKET: z.string().min(1, "no puede estar vacio").optional(),
   DOCKER_API_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(3_000),
+  GIT_IMAGE: z.string().trim().min(1, "no puede estar vacio").default("manteiner-git:0.1.0"),
+  MAX_REPO_SIZE_KB: z.coerce.number().int().positive().default(2_000_000),
+  CLONE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(30 * 60_000).default(5 * 60_000),
 
   MASTER_KEY: masterKey,
   SESSION_SECRET: z.string().min(32, "debe tener al menos 32 caracteres"),

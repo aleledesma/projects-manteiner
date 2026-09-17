@@ -54,7 +54,9 @@ export class AppError extends Error {
 export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((err, req: FastifyRequest, reply: FastifyReply) => {
     if (err instanceof AppError) {
-      req.log.info({ code: err.code, statusCode: err.statusCode }, "error de dominio");
+      const context = { err, code: err.code, statusCode: err.statusCode };
+      if (err.statusCode >= 500) req.log.error(context, "error de dominio");
+      else req.log.info(context, "error de dominio");
       return reply.status(err.statusCode).send(body(err.code, err.message, err.details));
     }
 

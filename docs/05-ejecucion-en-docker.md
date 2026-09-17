@@ -149,6 +149,9 @@ const stream = await c.attach({ stream: true, stdin: true, stdout: true, stderr:
 await c.start();
 stream.write(token + "\n");   // el token viaja por stdin
 stream.end();
+
+const { StatusCode } = await c.wait();
+// StdinOnce puede cerrar el attach antes que stdout: el resultado final se lee con c.logs().
 ```
 
 🟢 **Por qué stdin y no `Env`.** Las variables de entorno aparecen en `docker inspect`, en
@@ -203,6 +206,10 @@ du -sk /work/repo | cut -f1        > /work/size_kb
   tiene un HEAD limpio, así que el `git diff` posterior muestra exactamente lo que tocó el agente.
 
 🟢 Si el contenedor sale con código ≠ 0, el run falla en `cloning` y el volumen se destruye.
+
+🟢 La implementación vive en `RepositoryWorkspaceService.withClonedRepository()`: entrega el
+volumen a un callback para que los siguientes contenedores lo usen y lo elimina en `finally`,
+incluso si falla el clon o el callback.
 
 ## Contenedor 2 — agent
 

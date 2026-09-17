@@ -65,3 +65,58 @@ describe("GithubAppService.createCloneToken", () => {
     );
   });
 });
+
+describe("GithubAppService.getRepositoryForClone", () => {
+  it("consulta por ID el tamaño y las coordenadas autorizadas", async () => {
+    let request: { input: string; init?: RequestInit } | undefined;
+    const service = new GithubAppService(config, async (input, init) => {
+      request = { input: String(input), init };
+      return Response.json({
+        id: 999,
+        owner: { login: "octocat" },
+        name: "hello-world",
+        default_branch: "main",
+        size: 12_345,
+      });
+    });
+
+    assert.deepEqual(await service.getRepositoryForClone("clone-token", 999), {
+      id: 999,
+      owner: { login: "octocat" },
+      name: "hello-world",
+      default_branch: "main",
+      size: 12_345,
+    });
+    assert.equal(request?.input, "https://api.github.com/repositories/999");
+    assert.equal(
+      (request?.init?.headers as Record<string, string>).Authorization,
+      "Bearer clone-token",
+    );
+  });
+
+  it("trata una respuesta malformada como error de GitHub", async () => {
+    const service = new GithubAppService(config, async () => Response.json({ size: "unknown" }));
+    await assert.rejects(
+      () => service.getRepositoryForClone("clone-token", 999),
+      (error: unknown) => error instanceof AppError && error.code === "GITHUB_API_ERROR",
+    );
+  });
+});
+
+describe("GithubAppService.revokeInstallationToken", () => {
+  it("revoca el token de instalacion al terminar", async () => {
+    let request: { input: string; init?: RequestInit } | undefined;
+    const service = new GithubAppService(config, async (input, init) => {
+      request = { input: String(input), init };
+      return new Response(null, { status: 204 });
+    });
+
+    await service.revokeInstallationToken("clone-token");
+    assert.equal(request?.input, "https://api.github.com/installation/token");
+    assert.equal(request?.init?.method, "DELETE");
+    assert.equal(
+      (request?.init?.headers as Record<string, string>).Authorization,
+      "Bearer clone-token",
+    );
+  });
+});

@@ -18,9 +18,15 @@ import { createAuth, type AppAuth } from "./services/auth.ts";
 import { CredentialCrypto } from "./services/credential-crypto.ts";
 import { DockerService, type DockerClient } from "./services/docker.ts";
 import { GithubAppService } from "./services/github-app.ts";
+import {
+  DockerWorkspaceRuntime,
+  RepositoryWorkspaceService,
+  type WorkspaceDockerClient,
+} from "./services/repository-workspace.ts";
 
 export interface ServerDependencies {
   dockerClient?: DockerClient;
+  workspaceDockerClient?: WorkspaceDockerClient;
 }
 
 export function buildServer(config: Config, dependencies: ServerDependencies = {}): FastifyInstance {
@@ -29,6 +35,11 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
   const auth = createAuth(config, database.db);
   const githubApp = new GithubAppService(config);
   const docker = new DockerService(config, dependencies.dockerClient);
+  const repositoryWorkspace = new RepositoryWorkspaceService(
+    config,
+    githubApp,
+    new DockerWorkspaceRuntime(config, dependencies.workspaceDockerClient),
+  );
   const app = Fastify({
     logger: {
       level: config.LOG_LEVEL,
@@ -68,6 +79,7 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
   app.decorate("auth", auth);
   app.decorate("githubApp", githubApp);
   app.decorate("docker", docker);
+  app.decorate("repositoryWorkspace", repositoryWorkspace);
   app.addHook("onClose", () => database.close());
 
   registerErrorHandler(app);
@@ -88,5 +100,6 @@ declare module "fastify" {
     auth: AppAuth;
     githubApp: GithubAppService;
     docker: DockerService;
+    repositoryWorkspace: RepositoryWorkspaceService;
   }
 }

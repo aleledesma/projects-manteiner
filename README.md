@@ -16,10 +16,10 @@ seguras, devuelve un informe estructurado y genera un PDF, mostrando el progreso
 | 0 — Verificación técnica | ✅ cerrada ([hallazgos](./docs/13-hallazgos-spike.md)) |
 | 1 — Esqueleto y persistencia | ✅ cerrada — API, contratos, SQLite y cifrado listos. |
 | 2 — Autenticación | ✅ cerrada y verificada contra GitHub real. |
-| 3 — GitHub App y repositorios | 🟡 backend de repos listo; token de clon e imagen Git implementados. |
+| 3 — GitHub App y repositorios | 🟡 clonado efímero desde la API implementado y verificado. |
 | 4 a 9 | 🔲 pendientes ([roadmap](./docs/11-roadmap.md)) |
 
-93 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
+103 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
 
 ## Requisitos
 
