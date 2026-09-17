@@ -28,10 +28,27 @@ Estas se dan por firmes salvo que las cambiemos explícitamente.
 | D17 | El push a la rama principal se impide por **invariante de código**, no por GitHub | El token tiene `contents: write`: GitHub no lo impediría. Lo impiden el nombre de rama computado, el punto único de escritura y una aserción dura. |
 | D18 | `STORE_PATCH_ARTIFACT=false` por defecto | El PR es el registro canónico del diff; guardarlo además duplicaría código del usuario en nuestro disco. |
 | D19 | **Better Auth 1.6** para login y sesiones | Reduce lógica criptográfica propia, integra GitHub + Drizzle/SQLite y mantiene la GitHub App separada. Los hooks descartan los tokens OAuth antes de persistir. |
+| D20 | El estado pendiente del device flow vive **en memoria, ligado al usuario** | El flujo dura como máximo 15 minutos y no justifica una tabla. Sobrevive al cierre de la pestaña, no al reinicio de la API; la credencial autorizada sí se persiste. |
+| D21 | Reconectar un proveedor **reemplaza** su credencial y `DELETE` la elimina físicamente | Respeta el índice único `(user_id, provider_id)` y evita estados ambiguos entre API key y OAuth. |
+| D22 | Fase 4 adelanta la **imagen base mínima `manteiner-agent`**, no el runner | Catálogo y validación de API keys necesitan opencode real. La imagen queda reutilizable por Fase 5 sin adelantar la orquestación del agente. |
+| D23 | Un caché vencido pero válido se sirve mientras se refresca en background | La configuración sigue disponible con Docker apagado; el refresh explícito queda como operación observable. |
 
 ---
 
 ## Revisiones registradas
+
+### R8 — Catálogo autenticado y runtime mínimo en Fase 4
+
+**Planteo previo:** generar un único catálogo global sin credenciales y postergar
+`docker/agent/Dockerfile` hasta la Fase 5.
+
+**Problema:** OpenAI por suscripción filtra sus modelos después de `auth.set`, y tanto el catálogo
+real como la validación de API keys necesitan un servidor opencode. Un catálogo anónimo no permite
+elegir con seguridad un modelo utilizable por la cuenta conectada.
+
+**Resolución:** Fase 4 crea una imagen base con opencode 1.18.30 pinneado y un runtime efímero
+endurecido. El catálogo carga la credencial activa cuando existe, elimina modelos sin tool calling
+y persiste solo metadata segura. No se adelantaron workspace, runner ni ejecución de auditorías.
 
 ### R7 — Better Auth reemplaza la autenticación propia
 
@@ -315,3 +332,38 @@ Para que no se lean como olvidos:
   usuarios.
 - **Despliegue.** v1 apunta a correr en una sola máquina con Docker. El empaquetado y el
   hosting se deciden cuando haya algo que desplegar.
+
+---
+
+## Cache del catalogo de modelos: por proveedor, no global
+
+**Medido el 2026-09-17** contra `manteiner-agent:0.1.0` (opencode 1.18.30):
+
+| Fase | Tiempo |
+|---|---|
+| create + start del contenedor | 448 ms |
+| hasta que opencode responde | 4737 ms |
+| `config.providers()` | 637 ms |
+| remove | 547 ms |
+| **total por corrida** | **6.4 s** |
+
+Y sobre todo: `config.providers()` **sin credencial devuelve un solo proveedor**
+(`opencode`, 8 modelos, 6.8 KB). Con un `auth.set` para `openai` devuelve 2 proveedores,
+49 modelos de openai, 59.6 KB. El catalogo depende de que proveedores estan configurados
+en esa corrida.
+
+Por eso guardar la respuesta entera en un unico archivo estaba mal: refrescar con la
+credencial de un usuario borraba lo aprendido con la de otro, y con varios usuarios eso
+degenera en un contenedor de 6.4 s por visita, cada uno pisando al anterior.
+
+**Decision:** el cache pasa a tener una entrada por proveedor (`version: 2`) y cada
+refresco **fusiona** en vez de reemplazar. Un proveedor que la corrida no vio se conserva.
+Ademas hay una promesa en vuelo por proveedor, asi que dos usuarios pidiendo lo mismo
+comparten un solo contenedor.
+
+**Pendiente de decidir:** en la medicion, una API key **invalida** alcanzo para que
+opencode expusiera los 49 modelos de openai. Es decir, la lista de modelos no depende del
+valor de la credencial, solo de que el proveedor este configurado. Si eso se confirma
+estable, el refresco podria usar placeholders y dejar de mandar credenciales reales al
+contenedor solo para listar modelos. Es comportamiento no documentado de opencode: no se
+adopta sin verificarlo de nuevo contra una version nueva.

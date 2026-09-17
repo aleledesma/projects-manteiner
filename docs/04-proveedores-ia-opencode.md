@@ -70,13 +70,18 @@ de configuración.
 
 ```
 Al arrancar la API (y luego cada 24h, o bajo demanda con "Actualizar catalogo"):
-  1. docker run --rm  manteiner-agent  (sin workspace, sin credenciales, red minima)
-  2. client.config.providers()
-  3. guardar el resultado en data/provider-catalog.json  (+ timestamp)
-  4. destruir el contenedor
+  1. docker run --rm  manteiner-agent  (sin workspace, red minima)
+  2. cargar por `auth.set` la credencial activa, si existe
+  3. client.config.providers()
+  4. filtrar modelos sin `capabilities.toolcall === true`
+  5. guardar solo metadata segura en data/provider-catalog.json  (+ timestamp)
+  6. destruir el contenedor
 ```
 
-La pantalla de configuración lee del caché. Es instantánea y no depende de Docker.
+La pantalla de configuración lee del caché. Es instantánea y no depende de Docker. Si el caché
+está vencido se sirve la última copia válida mientras el refresh corre en background; el endpoint
+de refresh explícito sí informa un error si Docker o el proveedor no están disponibles. En la v1
+single-user el catálogo autenticado representa la cuenta activa más reciente.
 
 Alternativa 🟡: `opencode models --refresh` vía CLI en el mismo contenedor, si resulta más
 simple que el endpoint.

@@ -7,11 +7,11 @@ primero para retomar el trabajo.
 
 ## Resumen en una línea
 
-Fases 0, 1 y 2 cerradas. En Fase 3 funcionan y fueron verificados contra GitHub real el callback
-de la GitHub App, el listado de repos autorizados y su vinculación mediante la consola del
-navegador; la UI se pospuso. La conexión base a Docker, el token de clon restringido y la imagen
-`manteiner-git` están implementados. La API ya valida el tamaño, clona en un volumen efímero con
-Dockerode, entrega ese volumen al siguiente paso y garantiza su limpieza en `finally`.
+Fases 0, 1 y 2 cerradas. Fase 3 backend funcional y Fase 4 backend completa; el onboarding web
+(V2) ya está construido y las UI de repos y settings siguen diferidas. La API conecta OpenAI por
+device flow, cifra credenciales, refresca OAuth con rotación segura, obtiene catálogo mediante un
+contenedor opencode efímero, valida API keys y guarda la selección de modelo global o por
+repositorio. El siguiente trabajo backend es la Fase 5.
 
 ## Qué está hecho y funcionando
 
@@ -20,58 +20,51 @@ Dockerode, entrega ese volumen al siguiente paso y garantiza su limpieza en `fin
 | Planificación completa (docs 00-13) | ✅ | 5 revisiones registradas |
 | Fase 0 — spikes de verificación | ✅ cerrada | [13](./13-hallazgos-spike.md) |
 | Monorepo npm workspaces | ✅ | `apps/api`, `apps/web`, `packages/contracts`, `spikes` |
-| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | 56 tests |
+| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | 66 tests |
 | `packages/contracts` | ✅ | 50 tests |
 | Contrato base verificado contra opencode real | ✅ | I5 cerrado; hardening posterior cubierto localmente |
 | Base de datos SQLite | ✅ | 15 tablas + 3 migraciones |
 | Cifrado AES-256-GCM | ✅ | IV aleatorio + AAD + 10 tests específicos |
 | Fase 2 — Better Auth + web mínima | ✅ cerrada | Smoke test real completado |
-| Fase 3 — GitHub App y repositorios | 🟡 | Backend, sync on-demand y clon real verificados; UI diferida |
+| Fase 3 — GitHub App y repositorios | 🟡 | Backend, sync on-demand y clon real verificados; UI de repos aun diferida |
 | Conexión Dockerode | ✅ | Detección local + `ping`/`version`; `/api/health` expone solo disponibilidad |
 | Token de clon por repositorio | ✅ | `contents: read`, un `repository_id`, sin caché; revocado tras clonar |
 | Imagen `manteiner-git` | ✅ | Build y clon real verificados; corre como UID 10001 |
 | Workspace efímero | ✅ | Tamaño previo + Dockerode + callback + limpieza real verificada |
-| Fases 4 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
+| Fase 4 — proveedores de IA | 🟡 | Backend completo; onboarding (V2) construido, UI de settings diferida |
+| V2 — Onboarding web | ✅ | 3 pasos contra la API real; typecheck y build limpios |
+| V7 — Configuración web | 🟡 | Proveedores, modelo, catálogo, GitHub y cuenta; sin borrado de cuenta |
+| Fases 5 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 
 ```bash
-npm ci && npm test             # 106/106
+npm ci && npm test             # 116/116
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
 ## Lo que sigue, en orden
 
-### Próxima sesión: comenzar la Fase 4
+### Próxima sesión backend: comenzar la Fase 5
 
-No continuar verificando la Fase 3. El siguiente trabajo es **Proveedores de IA** y debe empezar
-por el flujo de OpenAI con cuenta ChatGPT Plus/Pro, porque ya fue probado en los spikes y no
-depende de tener lista la imagen del agente.
+No volver a Fase 3 ni construir ahora las UI diferidas. El siguiente trabajo backend es
+**Contenedor y agente**: reutilizar la imagen base `manteiner-agent` y conectar el workspace
+efímero existente con opencode.
 
-Primer corte recomendado:
+Primer corte recomendado de Fase 5:
 
-1. Releer [04-proveedores-ia-opencode.md](./04-proveedores-ia-opencode.md), especialmente device
-   flow, rotación del refresh token y endpoints de proveedores.
-2. Portar `spikes/src/01-openai-device-flow.ts` y `spikes/src/lib/openai-credential.ts` a un
-   servicio de producción en `apps/api`: inicio, polling, intercambio PKCE, extracción de
-   `accountId` y refresh.
-3. Persistir la credencial OAuth en `provider_credentials` usando el `CredentialCrypto` existente;
-   nunca devolver access/refresh tokens desde la API.
-4. Implementar y probar `POST /api/providers/oauth/openai/start`, su consulta de estado,
-   `GET /api/providers` y `DELETE /api/providers/:id`.
-5. Actualizar `GET /api/me` para que `onboarding.hasProvider` refleje la credencial activa.
+1. Releer [05-ejecucion-en-docker.md](./05-ejecucion-en-docker.md) y la sección de Fase 5 del roadmap.
+2. Crear `packages/agent-runner`: configuración, agente y arranque de `opencode serve`.
+3. Reutilizar `ProviderCredentialService.getUsable()` para obtener una credencial válida durante
+   todo el run; el servicio impone `RUN_TIMEOUT_MS + REFRESH_MARGIN_MS`.
+4. Encadenar clone → agente → recolección sobre el volumen existente con cleanup incondicional.
+5. Implementar `POST /api/repos/:id/runs` sin streaming ni PR todavía.
 
-Después de ese corte:
-
-- implementar el catálogo y la selección de modelo;
-- implementar credenciales por API key con validación real;
-- completar la UI de configuración/onboarding;
-- recién entonces pasar a la imagen y al runner completo del agente de la Fase 5.
-
-⚠️ El catálogo y la validación real de API keys necesitan un contenedor con opencode. La imagen
-`manteiner-agent` figura en Fase 5; al llegar a ese punto hay que decidir si Fase 4 crea una imagen
-base mínima reutilizable o si se adelanta solo esa tarea, sin construir todavía el runner completo.
+El onboarding (V2) ya está construido: cubre los tres pasos y aparece solo mientras `/api/me`
+reporte algo incompleto. Lo que sigue diferido es la UI de **configuración** (V7) y la de
+**repositorios** (V3/V9). La imagen base ya fue adelantada y verificada; no hay que reemplazarla
+por otro runtime.
 
 I9 (calibración del tamaño) e I10 (comprobación de que el token no aparece en `/proc`) quedan
 diferidos hasta que el flujo de ejecución completo sea funcional; no bloquean el desarrollo actual.
@@ -142,11 +135,17 @@ apps/api/src/
   db/migrations/ Migraciones SQL versionadas.
   routes/auth.ts  Puente Fastify/Better Auth + GET /api/me.
   routes/github.ts Instalacion de GitHub App, repos disponibles y vinculacion.
+  routes/providers.ts OAuth, credenciales, catalogo y preferencias de modelo.
   services/auth.ts Configura GitHub, sesiones y descarte de tokens OAuth.
   services/github-app.ts JWT de App, tokens efimeros y llamadas a GitHub.
   services/docker.ts Conexion al daemon, estado y error DOCKER_UNAVAILABLE.
   services/repository-workspace.ts Tamaño, volumen, clon Dockerode y limpieza garantizada.
   services/credential-crypto.ts  AES-256-GCM para credenciales de proveedores.
+  services/openai-oauth.ts Device flow, PKCE, polling y refresh de OpenAI.
+  services/provider-credentials.ts Persistencia cifrada, CRUD y refresh persist-before-use.
+  services/provider-catalog.ts Cache atomico y validacion de modelos con tool calling.
+  services/opencode-runtime.ts Contenedor efimero para catalogo y validacion real.
+  services/model-preferences.ts Preferencia global y override por repositorio.
   errors.ts       AppError + handler unico. Forma { error: { code, message } }.
   server.ts       buildServer(config) -> NO escucha, para que los tests usen inject().
   index.ts        Entrypoint: valida config, arranca, maneja SIGTERM/SIGINT.
@@ -166,15 +165,35 @@ spikes/src/
   lib/openai-credential.ts   Carga/refresco de la credencial. Base de la Fase 4.
 
 apps/web/src/
-  App.tsx          Sesión iniciada y logout; usa los componentes visuales existentes.
+  App.tsx          Ruteo por estado: login -> onboarding -> shell. Sin router.
   auth-client.ts  Cliente React de Better Auth.
+  api.ts          fetch tipado + ApiError con el `code` del doc 09.
+  useMe.ts        GET /api/me: usuario y estado de onboarding, recargable.
+  tiempo.ts       Fechas relativas en es-AR con Intl.RelativeTimeFormat.
+  views/LoginView.tsx      V1.
+  views/OnboardingView.tsx V2: riel de progreso, 3 pasos y pantalla de cierre.
+  views/SettingsView.tsx   V7: nav lateral sticky + cuatro secciones.
+  providers/catalogo.ts        Lista curada de opciones de proveedor.
+  providers/ConectarProveedor.tsx Tarjetas + rama API key + rama device flow.
+  providers/DeviceFlow.tsx     Codigo, cuenta regresiva y polling cada 2s.
+  providers/ModelPicker.tsx    Catalogo autenticado, filtro y costo por millon.
+  onboarding/StepProvider.tsx  Paso 1: credencial conectada y modelo opcional.
+  onboarding/StepGithub.tsx    Permisos explicados antes del redirect.
+  onboarding/StepRepos.tsx     Buscador, seleccion masiva y vinculacion.
+  settings/Seccion.tsx         Bloque con ancla para la nav lateral.
+  settings/SeccionProveedores.tsx Filas, modales de alta, reconexion y borrado.
+  settings/SeccionModelo.tsx   Modelo por defecto + estado del catalogo.
+  settings/SeccionGithub.tsx   Instalaciones, org vs personal, sincronizar.
+  settings/SeccionCuenta.tsx   Identidad y cierre de sesion.
 
 docker/git/
   Dockerfile       Imagen manteiner-git: Alpine + Git, usuario 10001.
   clone.sh         Clon depth 1; token por stdin/FIFO; elimina origin.
+docker/agent/
+  Dockerfile       Base opencode 1.18.30, usuario 10001; reutilizable por Fase 5.
 ```
 
-### Dos invariantes que no hay que romper
+### Tres invariantes que no hay que romper
 
 1. **`maintenance-report.ts` no lleva transforms ni `.default()`.** `z.toJSONSchema()` emite el
    tipo de *salida*, así que un transform haría que el JSON Schema publicado difiera de lo que se
@@ -183,16 +202,21 @@ docker/git/
 2. **`normalize.ts` nunca rechaza un informe entero.** Corrige lo corregible y anota el resto en
    `warnings`. Perder una auditoría de 20 minutos porque una URL era `http` sería absurdo.
 
+3. **Las credenciales nunca salen de la API ni entran en errores/logs.** El catálogo persiste solo
+   metadata normalizada; errores del SDK no se encadenan como `cause` porque podrían retener el body
+   enviado a `auth.set`.
+
 ---
 
 ## Comandos útiles
 
 ```bash
-npm test                                              # 106 tests
+npm test                                              # 116 tests
 npm run typecheck
 npm run dev                                           # API en :3001
 npm run dev:web                                       # web en :5173
 npm run docker:build:git                              # imagen manteiner-git:0.1.0
+npm run docker:build:agent                            # imagen manteiner-agent:0.1.0
 
 npm run print-schema --workspace @manteiner/contracts # el JSON Schema del informe
 npm run contract --workspace manteiner-spikes -- --dry-run   # verifica sin gastar tokens
@@ -204,7 +228,7 @@ npm run device-flow --workspace manteiner-spikes             # re-autenticar Ope
 
 - **Paso a paso.** El usuario quiere entender cada pieza; no construir fases enteras de una.
 - **Las decisiones se registran**, incluidas las descartadas y por qué.
-  [12](./12-decisiones-abiertas.md) tiene 19 decisiones y 7 revisiones.
+  [12](./12-decisiones-abiertas.md) tiene 23 decisiones y 8 revisiones.
 - **Verificar antes de construir**, pero solo lo que puede cambiar la arquitectura. El spike 3 se
   salteó aplicando ese criterio; sus preguntas pasaron a criterios de aceptación de las fases 3 y 5.
 - **No dejar procesos corriendo.** Verificar por PID después de levantar cualquier servidor.

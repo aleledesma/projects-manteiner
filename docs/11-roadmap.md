@@ -115,20 +115,19 @@ el repositorio no existe en ningún punto del filesystem del host.
 
 ---
 
-## Fase 4 — Proveedores de IA
+## Fase 4 — Proveedores de IA ✅ CERRADA
 
-**Próxima fase a implementar.** Empezar por el device flow de OpenAI y la persistencia cifrada:
-esa parte reutiliza el spike existente y no depende todavía de la imagen del agente. El catálogo
-y la validación real de API keys sí necesitan un contenedor con opencode; resolver esa frontera
-después del primer corte, sin adelantar todo el runner de la Fase 5.
+Backend y UI implementados y verificados. Para catálogo y validación real se adelantó únicamente
+la imagen base reproducible `manteiner-agent`; el runner y las auditorías siguen en Fase 5.
 
-- [ ] **Device flow de OpenAI**: iniciar, mostrar código, polling, intercambio PKCE, `accountId`.
-- [ ] Almacenamiento cifrado (`api` y `oauth`) + `GET`/`DELETE`.
-- [ ] Refrescar OAuth solo cerca del vencimiento, persistir antes de usar y marcar inválida si falla.
-- [ ] Catalog container + caché de `provider-catalog.json`.
-- [ ] `POST /api/providers` para API keys, con validación real contra el proveedor.
-- [ ] Selección de modelo (global y por repo), filtrando los que no soporten tool calling.
-- [ ] UI de las pantallas de configuración y onboarding, con la pantalla de "ingresá este código".
+- [x] **Device flow de OpenAI**: iniciar, mostrar código, polling, intercambio PKCE, `accountId`.
+- [x] Almacenamiento cifrado (`api` y `oauth`) + `GET`/`DELETE`.
+- [x] Refrescar OAuth solo cerca del vencimiento, persistir antes de usar y marcar inválida si falla.
+- [x] Catalog container + caché de `provider-catalog.json`.
+- [x] `POST /api/providers` para API keys, con validación real contra el proveedor.
+- [x] Selección de modelo (global y por repo), filtrando los que no soporten tool calling.
+- [x] UI de onboarding (V2) y de configuración (V7), con la pantalla de "ingresá este código".
+- [x] Caché del catálogo por proveedor con merge: entrar a Configuración ya no levanta contenedores.
 
 **Entregable:** conectar la cuenta ChatGPT Plus por device code y elegir modelo.
 
@@ -136,7 +135,7 @@ después del primer corte, sin adelantar todo el runner de la Fase 5.
 
 ## Fase 5 — Contenedor y agente (el corazón)
 
-- [ ] `docker/agent/Dockerfile` + build reproducible con versión pinneada de opencode.
+- [x] `docker/agent/Dockerfile` + build reproducible con versión pinneada de opencode. (Adelantado en Fase 4.)
 - [ ] `packages/agent-runner`: genera config, genera el agente, levanta `opencode serve`.
 - [ ] Orquestador: secuencia de los tres contenedores sobre el volumen, con todos los límites.
 - [ ] Healthcheck con backoff y timeouts.

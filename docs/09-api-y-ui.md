@@ -52,6 +52,7 @@ caída: autenticación y configuración siguen funcionando, pero antes de ejecut
 |--------|------|-------------|
 | `GET` | `/api/github/install-url` | URL de instalación de la App (con `state`). |
 | `GET` | `/api/github/setup` | Callback post-instalación. |
+| `GET` | `/api/github/installations` | Instalaciones alcanzables, con repos accesibles y vinculados. |
 | `GET` | `/api/github/available-repos` | Repos de las instalaciones, aún no vinculados. |
 
 Los tres endpoints están implementados. `install-url` guarda solamente el hash de un `state`
@@ -83,8 +84,9 @@ las operaciones sobre un repo individual llegan con las fases que consumen esos 
 | `GET` | `/api/providers` | Credenciales del usuario (sin secretos). |
 | `POST` | `/api/providers` | Agrega credencial **por API key**. Valida antes de guardar. |
 | `POST` | `/api/providers/oauth/:providerId/start` | Inicia el device flow. Devuelve `{ url, userCode, expiresIn, pollToken }`. |
-| `GET` | `/api/providers/oauth/:providerId/status` | Estado del device flow: `pending` \| `authorized` \| `expired` \| `failed`. |
+| `GET` | `/api/providers/oauth/:providerId/status?pollToken=...` | Estado del device flow: `pending` \| `authorized` \| `expired` \| `failed`. |
 | `DELETE` | `/api/providers/:id` | Elimina credencial. |
+| `GET` | `/api/preferences/model` | Modelo por defecto del usuario, o `null` si no eligio. |
 | `PUT` | `/api/preferences/model` | Modelo por defecto del usuario. |
 
 `GET /api/providers` nunca devuelve la key:
@@ -93,6 +95,11 @@ las operaciones sobre un repo individual llegan con las fases que consumen esos 
 [{ "id": "...", "providerId": "anthropic", "label": "Personal",
    "lastFour": "9f2a", "status": "active", "verifiedAt": 1757900000000 }]
 ```
+
+La reconexión al mismo proveedor reemplaza su credencial previa. `DELETE` la elimina físicamente;
+las preferencias de modelo pueden conservarse, pero no son utilizables sin una credencial activa.
+El `pollToken` OAuth es opaco, está ligado al usuario y vive en memoria: cerrar la pestaña no corta
+el polling del backend, pero reiniciar la API exige comenzar un device flow nuevo.
 
 ### Runs
 
