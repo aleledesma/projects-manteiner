@@ -14,7 +14,7 @@
     "dev:web": "npm run dev --workspace @manteiner/web",
     "build": "npm run build --workspaces --if-present",
     "docker:build:git": "docker build --tag manteiner-git:0.1.0 docker/git",
-    "docker:build:agent": "docker build --tag manteiner-agent:0.1.0 docker/agent",
+    "docker:build:agent": "docker build --tag manteiner-agent:0.1.0 --file docker/agent/Dockerfile .",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
   },

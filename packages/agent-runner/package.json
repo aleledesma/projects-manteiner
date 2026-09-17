@@ -1,0 +1,14 @@
+{
+  "name": "@manteiner/agent-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Entrypoint del contenedor del agente: genera la config de opencode y levanta el servidor",
+  "exports": {
+    ".": "./src/workspace.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
+  }
+}

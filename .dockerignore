@@ -1,0 +1,14 @@
+# El contexto ahora es la raiz del repo (la imagen del agente copia el runner).
+# Sin esto, docker sube node_modules y data/ enteros en cada build.
+node_modules
+**/node_modules
+.git
+data
+dist
+**/dist
+apps/web
+spikes/.out
+*.log
+.env
+.env.*
+!.env.example

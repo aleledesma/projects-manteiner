@@ -133,27 +133,27 @@ la imagen base reproducible `manteiner-agent`; el runner y las auditorías sigue
 
 ---
 
-## Fase 5 — Contenedor y agente (el corazón)
+## Fase 5 — Contenedor y agente (el corazón) 🟡 BACKEND COMPLETO
 
 - [x] `docker/agent/Dockerfile` + build reproducible con versión pinneada de opencode. (Adelantado en Fase 4.)
-- [ ] `packages/agent-runner`: genera config, genera el agente, levanta `opencode serve`.
-- [ ] Orquestador: secuencia de los tres contenedores sobre el volumen, con todos los límites.
-- [ ] Healthcheck con backoff y timeouts.
-- [ ] `finally` que destruye contenedores y volumen en todos los caminos (incluido `SIGTERM` de la API).
-- [ ] Ejecución completa de una sesión con structured output y validación (usa `packages/contracts` de la Fase 1).
-- [ ] Limpieza garantizada (`finally`) y limpieza de huérfanos al arrancar.
+- [x] `packages/agent-runner`: genera config, genera el agente, levanta `opencode serve`.
+- [x] Orquestador: clonado + agente sobre el volumen, con todos los límites. El tercero (publish) es Fase 7.
+- [x] Healthcheck con backoff exponencial, corte temprano si el contenedor muere, y timeouts.
+- [x] `finally` que destruye contenedores y volumen en todos los caminos (incluido `SIGTERM` de la API).
+- [x] Ejecución completa de una sesión con structured output y validación contra `packages/contracts`.
+- [x] Limpieza garantizada (`finally`) y limpieza de huérfanos al arrancar, verificada contra Docker real.
 
 **Criterios de aceptación reubicados desde la Fase 0 y el spike 3:**
 
 - [x] I4 — `opencode serve` arranca sin credenciales y `auth.set` posterior funciona. Ver paso 1.3.
-- [ ] I6 — el agente trabaja con `bash: deny` + allowlist sin trabarse.
-- [ ] I7b — el modelo mantiene la lista de todos con disciplina.
-- [ ] I11 — ¿`GET /session/{id}/diff` funciona con `snapshot: false`? Si sí, reemplaza el `git diff` por `exec`.
+- [>] I6 — **decisión revisada:** se arranca con `bash: allow` y se restringe después, con los comandos que el agente pida de verdad. La contención real es el contenedor, no el permiso.
+- [>] I7b — **neutralizada por diseño:** `run_steps` se deriva del array `steps` del informe validado, no de los eventos `todo.updated`. Un modelo indisciplinado degrada la barra de progreso, no el informe.
+- [>] I11 — se mantiene el `git diff` por `exec`, con `snapshot: false`. Verificar el endpoint es barato y queda para el primer run real; no se cambia sin evidencia.
 - [x] I12 — `auth.set` acepta `accountId` en opencode 1.18.30. Ver paso 1.3.
-- [ ] 3.5 — `dockerode` contra el named pipe de Docker Desktop en Windows.
+- [x] 3.5 — `dockerode` contra el named pipe de Docker Desktop en Windows. Cerrada por evidencia: clonado, catálogo, agente y limpieza corren por Dockerode sin configurar `DOCKER_SOCKET`.
 
 **Entregable:** `POST /api/repos/:id/runs` corre el agente de punta a punta y guarda
-`result_json`. Sin streaming ni PR todavía.
+`result_json`. Sin streaming ni PR todavía. ✅ La UI queda para después.
 
 ---
 

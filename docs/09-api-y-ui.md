@@ -86,6 +86,9 @@ las operaciones sobre un repo individual llegan con las fases que consumen esos 
 | `POST` | `/api/providers/oauth/:providerId/start` | Inicia el device flow. Devuelve `{ url, userCode, expiresIn, pollToken }`. |
 | `GET` | `/api/providers/oauth/:providerId/status?pollToken=...` | Estado del device flow: `pending` \| `authorized` \| `expired` \| `failed`. |
 | `DELETE` | `/api/providers/:id` | Elimina credencial. |
+| `POST` | `/api/repos/:id/runs` | Corre la auditoria completa. Responde al terminar (sin streaming todavia). |
+| `GET` | `/api/runs/:id` | Run con su informe validado. |
+| `GET` | `/api/repos/:id/runs` | Historico del repositorio, ultimos 50. |
 | `GET` | `/api/preferences/model` | Modelo por defecto del usuario, o `null` si no eligio. |
 | `PUT` | `/api/preferences/model` | Modelo por defecto del usuario. |
 

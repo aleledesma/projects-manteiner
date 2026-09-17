@@ -34,32 +34,32 @@ repositorio. El siguiente trabajo backend es la Fase 5.
 | Fase 4 — proveedores de IA | 🟡 | Backend completo; onboarding (V2) construido, UI de settings diferida |
 | V2 — Onboarding web | ✅ | 3 pasos contra la API real; typecheck y build limpios |
 | V7 — Configuración web | 🟡 | Proveedores, modelo, catálogo, GitHub y cuenta; sin borrado de cuenta |
+| Fase 5 — Contenedor y agente | 🟡 | Backend completo: runner, orquestador, limpieza y validación; UI diferida |
 | Fases 5 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 
 ```bash
-npm ci && npm test             # 116/116
+npm ci && npm test             # 135/135 (77 api + 8 runner + 50 contracts)
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
 ## Lo que sigue, en orden
 
-### Próxima sesión backend: comenzar la Fase 5
+### Próxima sesión: UI de repositorios y del run
 
-No volver a Fase 3 ni construir ahora las UI diferidas. El siguiente trabajo backend es
-**Contenedor y agente**: reutilizar la imagen base `manteiner-agent` y conectar el workspace
-efímero existente con opencode.
+El backend de la Fase 5 está completo. `POST /api/repos/:id/runs` clona, audita, valida el
+informe contra `packages/contracts` y persiste `runs`, `run_steps` y `run_findings`. Falta la
+parte gráfica, que el usuario dejó explícitamente para después:
 
-Primer corte recomendado de Fase 5:
+1. **V3 — dashboard de repositorios**: hoy sigue siendo el placeholder de la Fase 2. Es lo que
+   permite disparar un run desde la UI.
+2. **V5 — informe del run**: leer `GET /api/runs/:id` y mostrar `result.report`.
+3. Recién después, la Fase 6 (streaming SSE) y la 7 (Pull Requests).
 
-1. Releer [05-ejecucion-en-docker.md](./05-ejecucion-en-docker.md) y la sección de Fase 5 del roadmap.
-2. Crear `packages/agent-runner`: configuración, agente y arranque de `opencode serve`.
-3. Reutilizar `ProviderCredentialService.getUsable()` para obtener una credencial válida durante
-   todo el run; el servicio impone `RUN_TIMEOUT_MS + REFRESH_MARGIN_MS`.
-4. Encadenar clone → agente → recolección sobre el volumen existente con cleanup incondicional.
-5. Implementar `POST /api/repos/:id/runs` sin streaming ni PR todavía.
+Lo que **no** hay que rehacer: el runner, el orquestador, la limpieza de huérfanos ni la
+validación del structured output. Están implementados y con tests.
 
 El onboarding (V2) ya está construido: cubre los tres pasos y aparece solo mientras `/api/me`
 reporte algo incompleto. Lo que sigue diferido es la UI de **configuración** (V7) y la de
@@ -146,10 +146,19 @@ apps/api/src/
   services/provider-catalog.ts Cache atomico y validacion de modelos con tool calling.
   services/opencode-runtime.ts Contenedor efimero para catalogo y validacion real.
   services/model-preferences.ts Preferencia global y override por repositorio.
+  services/agent-runtime.ts    Contenedor 2: monta el volumen, auth.set por HTTP y dirige la sesion.
+  services/run-orchestrator.ts Clona, audita, valida contra contracts y persiste el run.
+  services/docker-cleanup.ts   Huerfanos al arrancar: runs vivos, contenedores y volumenes.
+  services/docker-helpers.ts   Etiquetas, deadlines y demultiplexado de logs de Docker.
+  routes/runs.ts  POST /api/repos/:id/runs + lectura de runs.
   errors.ts       AppError + handler unico. Forma { error: { code, message } }.
   server.ts       buildServer(config) -> NO escucha, para que los tests usen inject().
   index.ts        Entrypoint: valida config, arranca, maneja SIGTERM/SIGINT.
   routes/health.ts
+
+packages/agent-runner/src/
+  workspace.ts    Genera opencode.json, el agente y la exclusion de .opencode. Puro y testeado.
+  index.ts        Entrypoint del contenedor: escribe, levanta opencode y reenvia senales.
 
 packages/contracts/src/
   maintenance-report.ts   Zod del informe. PURO: sin transforms (ver nota abajo).

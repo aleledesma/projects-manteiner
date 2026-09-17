@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Contrato de salida del agente: Zod, JSON Schema derivado y prompts versionados",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./fixtures": "./src/fixtures.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

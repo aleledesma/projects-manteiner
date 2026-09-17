@@ -15,6 +15,8 @@ import { authRoutes } from "./routes/auth.ts";
 import { githubRoutes } from "./routes/github.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { providerRoutes } from "./routes/providers.ts";
+import { runRoutes } from "./routes/runs.ts";
+import { DockerAgentRuntime, type AgentDockerClient, type AgentRuntime } from "./services/agent-runtime.ts";
 import { createAuth, type AppAuth } from "./services/auth.ts";
 import { CredentialCrypto } from "./services/credential-crypto.ts";
 import { DockerService, type DockerClient } from "./services/docker.ts";
@@ -24,6 +26,8 @@ import { ModelPreferenceService } from "./services/model-preferences.ts";
 import { DockerOpencodeRuntime } from "./services/opencode-runtime.ts";
 import { ProviderCatalogService, type OpencodeProviderRuntime } from "./services/provider-catalog.ts";
 import { ProviderCredentialService } from "./services/provider-credentials.ts";
+import { OrphanCleanupService, type CleanupDockerClient } from "./services/docker-cleanup.ts";
+import { RunOrchestratorService } from "./services/run-orchestrator.ts";
 import {
   DockerWorkspaceRuntime,
   RepositoryWorkspaceService,
@@ -36,6 +40,9 @@ export interface ServerDependencies {
   fetch?: typeof fetch;
   now?: () => number;
   providerRuntime?: OpencodeProviderRuntime;
+  agentRuntime?: AgentRuntime;
+  agentDockerClient?: AgentDockerClient;
+  cleanupDockerClient?: CleanupDockerClient;
 }
 
 export function buildServer(config: Config, dependencies: ServerDependencies = {}): FastifyInstance {
@@ -83,6 +90,15 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
     githubApp,
     new DockerWorkspaceRuntime(config, dependencies.workspaceDockerClient),
   );
+  const agentRuntime = dependencies.agentRuntime
+    ?? new DockerAgentRuntime(config, dependencies.agentDockerClient, dependencies.fetch);
+  const runs = new RunOrchestratorService(
+    database,
+    repositoryWorkspace,
+    agentRuntime,
+    providerCredentials,
+    dependencies.now,
+  );
   const app = Fastify({
     logger: {
       level: config.LOG_LEVEL,
@@ -127,13 +143,30 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
   app.decorate("githubApp", githubApp);
   app.decorate("docker", docker);
   app.decorate("repositoryWorkspace", repositoryWorkspace);
+  app.decorate("runs", runs);
   app.addHook("onClose", async () => {
     openAIOAuth.close();
     await providerCatalog.close();
     database.close();
   });
   if (!config.isTest) {
-    app.addHook("onReady", () => {
+    app.addHook("onReady", async () => {
+      // Antes que nada: un volumen huerfano tiene el repositorio de alguien
+      // adentro, y el disenio se apoya en que eso no sobreviva al run (doc 05).
+      const cleanup = new OrphanCleanupService(
+        database,
+        config,
+        dependencies.cleanupDockerClient,
+        dependencies.now,
+      );
+      const reporte = await cleanup.run();
+      if (reporte.runs + reporte.containers + reporte.volumes > 0 || reporte.failures.length > 0) {
+        app.log.info(reporte, "limpieza de huerfanos al arrancar");
+      }
+      if (reporte.failures.length > 0) {
+        app.log.warn({ failures: reporte.failures }, "quedaron huerfanos sin limpiar");
+      }
+
       providerCatalog.start((error) => app.log.warn({ err: error }, "no se pudo refrescar el catalogo"));
     });
   }
@@ -144,6 +177,7 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
   authRoutes(app);
   githubRoutes(app);
   providerRoutes(app);
+  runRoutes(app);
 
   return app;
 }
@@ -162,5 +196,6 @@ declare module "fastify" {
     githubApp: GithubAppService;
     docker: DockerService;
     repositoryWorkspace: RepositoryWorkspaceService;
+    runs: RunOrchestratorService;
   }
 }

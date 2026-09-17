@@ -64,6 +64,9 @@ const envSchema = z.object({
   PROVIDER_CATALOG_MAX_AGE_MS: z.coerce.number().int().min(60_000).default(24 * 60 * 60_000),
   PROVIDER_STARTUP_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(5 * 60_000).default(30_000),
   PROVIDER_OPERATION_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(10 * 60_000).default(2 * 60_000),
+  CONTAINER_START_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(10 * 60_000).default(60_000),
+  AGENT_MEMORY_MB: z.coerce.number().int().min(512).max(32_768).default(2_048),
+  AGENT_CPUS: z.coerce.number().min(0.5).max(32).default(2),
 
   MASTER_KEY: masterKey,
   SESSION_SECRET: z.string().min(32, "debe tener al menos 32 caracteres"),
