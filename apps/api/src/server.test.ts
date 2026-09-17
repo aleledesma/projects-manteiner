@@ -121,6 +121,12 @@ describe("servidor", () => {
     const cookies = new Map<string, string>();
     let revokedGithubAppTokens = 0;
     let organizationRole: "admin" | "member" = "admin";
+    let personalInstallationDeleted = false;
+    let organizationInstallationDeleted = false;
+    let personalInstallationSuspended = false;
+    let failNextRepositoryList = false;
+    let personalRepositoryName = "hello-world";
+    let organizationRepositoryAvailable = true;
     const start = await app.inject({
       method: "POST",
       url: "/api/auth/sign-in/social",
@@ -171,6 +177,12 @@ describe("servidor", () => {
         return Response.json({ total_count: 1, repositories: [] });
       }
       if (/^https:\/\/api\.github\.com\/app\/installations\/(777|888|889)$/.test(url)) {
+        if (
+          (url.endsWith("/777") && personalInstallationDeleted) ||
+          (url.endsWith("/888") && organizationInstallationDeleted)
+        ) {
+          return Response.json({ message: "Not Found" }, { status: 404 });
+        }
         const organization = !url.endsWith("/777");
         return Response.json({
           id: url.endsWith("/889") ? 889 : organization ? 888 : 777,
@@ -178,7 +190,10 @@ describe("servidor", () => {
             ? { id: 42, login: "github", type: "Organization" }
             : { id: 583231, login: "octocat", type: "User" },
           repository_selection: "selected",
-          suspended_at: null,
+          suspended_at:
+            url.endsWith("/777") && personalInstallationSuspended
+              ? "2026-09-17T12:00:00Z"
+              : null,
         });
       }
       if (url === "https://api.github.com/user/memberships/orgs/github") {
@@ -194,24 +209,47 @@ describe("servidor", () => {
         );
       }
       if (url === "https://api.github.com/installation/repositories?per_page=100&page=1") {
+        if (failNextRepositoryList) {
+          failNextRepositoryList = false;
+          return Response.json({ message: "Unavailable" }, { status: 503 });
+        }
         const organization = String((init?.headers as Record<string, string>)?.Authorization).endsWith(
           "installation-token-888",
         );
+        const repositories = organization
+          ? organizationRepositoryAvailable
+            ? [
+                {
+                  id: 1000,
+                  owner: { login: "github" },
+                  name: "project",
+                  full_name: "github/project",
+                  default_branch: "main",
+                  private: false,
+                  language: "TypeScript",
+                  html_url: "https://github.com/github/project",
+                },
+              ]
+            : []
+          : [
+              {
+                id: 999,
+                owner: { login: "octocat" },
+                name: personalRepositoryName,
+                full_name: `octocat/${personalRepositoryName}`,
+                default_branch: "main",
+                private: false,
+                language: "TypeScript",
+                html_url: `https://github.com/octocat/${personalRepositoryName}`,
+              },
+            ];
         return Response.json({
-          total_count: 1,
-          repositories: [
-            {
-              id: organization ? 1000 : 999,
-              owner: { login: organization ? "github" : "octocat" },
-              name: organization ? "project" : "hello-world",
-              full_name: organization ? "github/project" : "octocat/hello-world",
-              default_branch: "main",
-              private: false,
-              language: "TypeScript",
-              html_url: "https://github.com/octocat/hello-world",
-            },
-          ],
+          total_count: repositories.length,
+          repositories,
         });
+      }
+      if (url === "https://api.github.com/installation/token" && init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
       }
       if (
         url === "https://api.github.com/applications/github-app-client-id/token" &&
@@ -362,6 +400,35 @@ describe("servidor", () => {
         ["github/project", "octocat/hello-world"],
       );
 
+      failNextRepositoryList = true;
+      const failedSync = await app.inject({
+        method: "GET",
+        url: "/api/repos",
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.equal(failedSync.statusCode, 502);
+      const stillLinked = app.database.sqlite
+        .prepare("SELECT count(*) AS count FROM repositories WHERE unlinked_at IS NULL")
+        .get() as { count: number };
+      assert.equal(stillLinked.count, 2);
+
+      personalRepositoryName = "renamed";
+      organizationRepositoryAvailable = false;
+      const synchronized = await app.inject({
+        method: "GET",
+        url: "/api/repos",
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.equal(synchronized.statusCode, 200);
+      assert.deepEqual(
+        synchronized.json().map((repository: { fullName: string }) => repository.fullName),
+        ["octocat/renamed"],
+      );
+      const removedRepository = app.database.sqlite
+        .prepare("SELECT unlinked_at FROM repositories WHERE github_repo_id = 1000")
+        .get() as { unlinked_at: number | null };
+      assert.equal(typeof removedRepository.unlinked_at, "number");
+
       const noneAvailable = await app.inject({
         method: "GET",
         url: "/api/github/available-repos",
@@ -398,6 +465,40 @@ describe("servidor", () => {
       });
       assert.equal(onboarded.json().onboarding.hasInstallation, true);
       assert.equal(onboarded.json().onboarding.hasRepos, true);
+
+      personalInstallationSuspended = true;
+      const whileSuspended = await app.inject({
+        method: "GET",
+        url: "/api/repos",
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.deepEqual(whileSuspended.json(), []);
+      personalInstallationSuspended = false;
+      const afterUnsuspend = await app.inject({
+        method: "GET",
+        url: "/api/repos",
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.deepEqual(
+        afterUnsuspend.json().map((repository: { fullName: string }) => repository.fullName),
+        ["octocat/renamed"],
+      );
+
+      personalInstallationDeleted = true;
+      organizationInstallationDeleted = true;
+      const afterUninstall = await app.inject({
+        method: "GET",
+        url: "/api/repos",
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.equal(afterUninstall.statusCode, 200);
+      assert.deepEqual(afterUninstall.json(), []);
+      const withoutInstallations = await app.inject({
+        method: "GET",
+        url: "/api/me",
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.equal(withoutInstallations.json().onboarding.hasInstallation, false);
 
       const logout = await app.inject({
         method: "POST",

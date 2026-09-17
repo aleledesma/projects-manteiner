@@ -20,13 +20,13 @@ Dockerode, entrega ese volumen al siguiente paso y garantiza su limpieza en `fin
 | Planificación completa (docs 00-13) | ✅ | 5 revisiones registradas |
 | Fase 0 — spikes de verificación | ✅ cerrada | [13](./13-hallazgos-spike.md) |
 | Monorepo npm workspaces | ✅ | `apps/api`, `apps/web`, `packages/contracts`, `spikes` |
-| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | 53 tests |
+| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | 56 tests |
 | `packages/contracts` | ✅ | 50 tests |
 | Contrato base verificado contra opencode real | ✅ | I5 cerrado; hardening posterior cubierto localmente |
 | Base de datos SQLite | ✅ | 15 tablas + 3 migraciones |
 | Cifrado AES-256-GCM | ✅ | IV aleatorio + AAD + 10 tests específicos |
 | Fase 2 — Better Auth + web mínima | ✅ cerrada | Smoke test real completado |
-| Fase 3 — GitHub App y repositorios | 🟡 | Backend verificado; UI de repos diferida; clon real verificado |
+| Fase 3 — GitHub App y repositorios | 🟡 | Backend, sync on-demand y clon real verificados; UI diferida |
 | Conexión Dockerode | ✅ | Detección local + `ping`/`version`; `/api/health` expone solo disponibilidad |
 | Token de clon por repositorio | ✅ | `contents: read`, un `repository_id`, sin caché; revocado tras clonar |
 | Imagen `manteiner-git` | ✅ | Build y clon real verificados; corre como UID 10001 |
@@ -36,25 +36,25 @@ Dockerode, entrega ese volumen al siguiente paso y garantiza su limpieza en `fin
 **Comprobalo:**
 
 ```bash
-npm ci && npm test             # 103/103
+npm ci && npm test             # 106/106
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
 ## Lo que sigue, en orden
 
-### Resolver la sincronización de repositorios
+### Avanzar a proveedores de IA
 
-- Resolver A5: webhooks en v1 o re-sincronización on-demand.
-- Después, avanzar con proveedores de IA y la ejecución del agente.
+- Implementar el catálogo y las credenciales de proveedores de IA de la Fase 4.
+- Después, construir la imagen y el runner del agente de la Fase 5.
 
 I9 (calibración del tamaño) e I10 (comprobación de que el token no aparece en `/proc`) quedan
 diferidos hasta que el flujo de ejecución completo sea funcional; no bloquean el desarrollo actual.
 
-### Decisión abierta que queda
+### Sincronización elegida
 
-Solo **A5**: si implementar webhooks de GitHub en v1 o re-sincronizar los repos en cada carga del
-dashboard. Es de Fase 3, no bloquea nada ahora.
+A5 quedó resuelta con sincronización on-demand en `GET /api/repos`. Los webhooks quedan diferidos
+hasta que exista despliegue público o ejecuciones programadas.
 
 ---
 
@@ -154,7 +154,7 @@ docker/git/
 ## Comandos útiles
 
 ```bash
-npm test                                              # 103 tests
+npm test                                              # 106 tests
 npm run typecheck
 npm run dev                                           # API en :3001
 npm run dev:web                                       # web en :5173

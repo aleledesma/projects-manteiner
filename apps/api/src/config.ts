@@ -65,6 +65,7 @@ const envSchema = z.object({
   GITHUB_APP_CLIENT_ID: z.string().min(1, "es obligatorio"),
   GITHUB_APP_CLIENT_SECRET: z.string().min(1, "es obligatorio"),
   GITHUB_APP_PRIVATE_KEY_BASE64: githubAppPrivateKey,
+  GITHUB_API_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(10_000),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === "production" && new URL(env.PUBLIC_URL).origin !== new URL(env.WEB_URL).origin) {
     ctx.addIssue({

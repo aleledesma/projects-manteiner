@@ -120,3 +120,34 @@ describe("GithubAppService.revokeInstallationToken", () => {
     );
   });
 });
+
+describe("GithubAppService deadlines", () => {
+  it("corta una llamada que no responde", async () => {
+    const service = new GithubAppService(
+      { ...config, GITHUB_API_TIMEOUT_MS: 10 },
+      async () => new Promise<Response>(() => undefined),
+    );
+
+    await assert.rejects(
+      () => service.getInstallationIfExists(777),
+      (error: unknown) => error instanceof AppError && error.code === "GITHUB_API_TIMEOUT",
+    );
+  });
+
+  it("corta un body que no termina", async () => {
+    let requestSignal: AbortSignal | null | undefined;
+    const service = new GithubAppService(
+      { ...config, GITHUB_API_TIMEOUT_MS: 10 },
+      async (_input, init) => {
+        requestSignal = init?.signal;
+        return new Response(new ReadableStream({ start() {} }));
+      },
+    );
+
+    await assert.rejects(
+      () => service.getInstallationIfExists(777),
+      (error: unknown) => error instanceof AppError && error.code === "GITHUB_API_TIMEOUT",
+    );
+    assert.equal(requestSignal?.aborted, true);
+  });
+});

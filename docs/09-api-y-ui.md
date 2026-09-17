@@ -57,8 +57,9 @@ caída: autenticación y configuración siguen funcionando, pero antes de ejecut
 Los tres endpoints están implementados. `install-url` guarda solamente el hash de un `state`
 aleatorio y `setup` exige sesión, consume ese estado una sola vez, comprueba con una autorización
 temporal de GitHub que el usuario puede acceder a la instalación y revoca el token al terminar.
-`POST /api/github/webhook` queda pendiente junto con la decisión entre webhooks y sincronización
-on-demand.
+La v1 usa sincronización on-demand: `GET /api/repos` reconcilia instalaciones, acceso y metadata
+contra GitHub antes de devolver los repos vinculados. Los webhooks quedan para una mejora
+posterior, cuando haya despliegue público o ejecuciones programadas.
 
 ### Repositorios
 

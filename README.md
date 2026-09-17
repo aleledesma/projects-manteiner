@@ -19,7 +19,7 @@ seguras, devuelve un informe estructurado y genera un PDF, mostrando el progreso
 | 3 — GitHub App y repositorios | 🟡 clonado efímero desde la API implementado y verificado. |
 | 4 a 9 | 🔲 pendientes ([roadmap](./docs/11-roadmap.md)) |
 
-103 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
+106 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
 
 ## Requisitos
 

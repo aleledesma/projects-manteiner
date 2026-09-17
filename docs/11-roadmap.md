@@ -100,7 +100,7 @@ contrato del agente es viable tal como está escrito.
 - [ ] Token restringido por repo para publicación (se implementa junto con los PR en Fase 7).
 - [x] Imagen `manteiner-git` + `clone.sh`, con token por stdin/FIFO y limpieza del remote.
 - [x] Chequeo de tamaño previo; volumen efímero; clon por Dockerode y limpieza en `finally`.
-- [ ] Webhooks con verificación de firma (o sincronización on-demand si se pospone).
+- [x] Sincronización on-demand al listar repos; webhooks diferidos para después de v1.
 
 **Criterios de aceptación reubicados desde el spike 3:**
 

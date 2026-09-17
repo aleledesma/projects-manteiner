@@ -110,20 +110,23 @@ instalación expiran a los 10 minutos, se almacenan hasheados y se consumen una 
 su propia lista de repos vinculados y sus propios runs. Esto permite compartir una instalación
 organizacional sin permitir que un miembro común reclame todos los repos de la organización.
 
-### Webhooks — 🟡 propuesto
+### Sincronización de repositorios — ✅ on-demand en v1
 
-Endpoint `POST /api/github/webhook` con verificación de firma `X-Hub-Signature-256` (HMAC SHA-256, comparación en tiempo constante).
+En v1 no se reciben webhooks. `GET /api/repos` consulta nuevamente las instalaciones y
+repositorios autorizados en GitHub antes de responder:
 
-Eventos a manejar en v1:
+- actualiza nombre, rama principal, visibilidad, lenguaje y URL de los repos vinculados;
+- oculta instalaciones suspendidas sin perder los vínculos;
+- hace soft-unlink de repos a los que la instalación perdió acceso;
+- hace soft-unlink de todos los repos y elimina la relación activa si la instalación fue eliminada;
+- nunca vincula automáticamente un repositorio nuevo: sigue requiriendo una acción del usuario.
 
-| Evento | Acción |
-|--------|--------|
-| `installation.deleted` | Marcar la instalación y sus repos como desvinculados. |
-| `installation_repositories.added/removed` | Sincronizar `repositories`. |
-| `installation.suspend/unsuspend` | Setear `suspended_at`. |
+La respuesta remota completa se obtiene antes de modificar SQLite, para que un error transitorio
+no deje una sincronización parcial. El futuro `POST /api/repos/:id/runs` hará la misma
+reconciliación antes de ejecutar.
 
-Si preferís empezar sin webhooks, la alternativa es re-sincronizar los repos en cada
-carga del dashboard. Funciona, pero deja estado obsoleto si alguien revoca desde GitHub.
+Los webhooks quedan como mejora posterior para despliegues públicos o ejecuciones programadas,
+donde conviene reflejar los cambios sin esperar a que alguien cargue el dashboard.
 
 ### Generación de installation tokens
 

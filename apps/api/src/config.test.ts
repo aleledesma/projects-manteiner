@@ -38,6 +38,7 @@ describe("loadConfig", () => {
     assert.equal(config.GIT_IMAGE, "manteiner-git:0.1.0");
     assert.equal(config.MAX_REPO_SIZE_KB, 2_000_000);
     assert.equal(config.CLONE_TIMEOUT_MS, 300_000);
+    assert.equal(config.GITHUB_API_TIMEOUT_MS, 10_000);
     assert.equal(config.isProduction, false);
   });
 
@@ -88,6 +89,11 @@ describe("loadConfig", () => {
       () => loadConfig(env({ GITHUB_APP_PRIVATE_KEY_BASE64: Buffer.from("no-es-pem").toString("base64") })),
       ConfigError,
     );
+  });
+
+  it("valida el timeout de la API de GitHub", () => {
+    assert.equal(loadConfig(env({ GITHUB_API_TIMEOUT_MS: "5000" })).GITHUB_API_TIMEOUT_MS, 5_000);
+    assert.throws(() => loadConfig(env({ GITHUB_API_TIMEOUT_MS: "99" })), ConfigError);
   });
 
   it("rechaza una MASTER_KEY que no sean 32 bytes", () => {

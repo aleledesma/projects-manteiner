@@ -63,6 +63,7 @@ export type GithubCloneRepository = z.infer<typeof repositoryCloneSchema>;
 export class GithubAppService {
   private readonly privateKey;
   private readonly listingTokens = new Map<number, { token: string; expiresAt: number }>();
+  private readonly responseControllers = new WeakMap<Response, AbortController>();
 
   constructor(
     private readonly config: Config,
@@ -87,7 +88,7 @@ export class GithubAppService {
         code,
       }),
     });
-    return oauthTokenSchema.parse(await response.json()).access_token;
+    return oauthTokenSchema.parse(await this.readJson(response)).access_token;
   }
 
   async userCanAccessInstallation(token: string, installationId: number): Promise<boolean> {
@@ -104,7 +105,7 @@ export class GithubAppService {
     const response = await this.request(`${API_BASE}/user`, {
       headers: this.githubHeaders(token),
     });
-    return githubUserSchema.parse(await response.json()).id;
+    return githubUserSchema.parse(await this.readJson(response)).id;
   }
 
   async userIsOrganizationAdmin(token: string, organization: string): Promise<boolean> {
@@ -114,7 +115,7 @@ export class GithubAppService {
     );
     if (response.status === 403 || response.status === 404) return false;
     if (!response.ok) throw this.apiError(response.status);
-    const membership = organizationMembershipSchema.parse(await response.json());
+    const membership = organizationMembershipSchema.parse(await this.readJson(response));
     return membership.state === "active" && membership.role === "admin";
   }
 
@@ -138,14 +139,39 @@ export class GithubAppService {
   }
 
   async getInstallation(installationId: number): Promise<GithubInstallation> {
-    const response = await this.request(`${API_BASE}/app/installations/${installationId}`, {
-      headers: this.githubHeaders(this.createAppJwt()),
-    });
-    return installationSchema.parse(await response.json());
+    const installation = await this.getInstallationIfExists(installationId);
+    if (!installation) throw this.apiError(404);
+    return installation;
   }
 
-  async listInstallationRepositories(installationId: number): Promise<GithubRepository[]> {
-    const token = await this.getListingToken(installationId);
+  async getInstallationIfExists(installationId: number): Promise<GithubInstallation | null> {
+    const response = await this.fetch(`${API_BASE}/app/installations/${installationId}`, {
+      headers: this.githubHeaders(this.createAppJwt()),
+    });
+    if (response.status === 404) {
+      this.listingTokens.delete(installationId);
+      return null;
+    }
+    if (!response.ok) throw this.apiError(response.status);
+    return installationSchema.parse(await this.readJson(response));
+  }
+
+  async listInstallationRepositories(
+    installationId: number,
+    options: { refresh?: boolean } = {},
+  ): Promise<GithubRepository[]> {
+    if (options.refresh) {
+      const token = await this.createListingToken(installationId);
+      try {
+        return await this.listRepositoriesWithToken(token);
+      } finally {
+        await this.revokeInstallationToken(token);
+      }
+    }
+    return this.listRepositoriesWithToken(await this.getListingToken(installationId));
+  }
+
+  private async listRepositoriesWithToken(token: string): Promise<GithubRepository[]> {
     const repositories: GithubRepository[] = [];
 
     for (let page = 1; ; page += 1) {
@@ -153,7 +179,7 @@ export class GithubAppService {
         `${API_BASE}/installation/repositories?per_page=100&page=${page}`,
         { headers: this.githubHeaders(token) },
       );
-      const batch = repositoryListSchema.parse(await response.json()).repositories;
+      const batch = repositoryListSchema.parse(await this.readJson(response)).repositories;
       repositories.push(...batch);
       if (batch.length < 100) return repositories;
     }
@@ -171,14 +197,14 @@ export class GithubAppService {
         }),
       },
     );
-    return accessTokenSchema.parse(await response.json()).token;
+    return accessTokenSchema.parse(await this.readJson(response)).token;
   }
 
   async getRepositoryForClone(token: string, repositoryId: number): Promise<GithubCloneRepository> {
     const response = await this.request(`${API_BASE}/repositories/${repositoryId}`, {
       headers: this.githubHeaders(token),
     });
-    const result = repositoryCloneSchema.safeParse(await response.json());
+    const result = repositoryCloneSchema.safeParse(await this.readJson(response));
     if (!result.success || result.data.id !== repositoryId) {
       throw new AppError(
         "GITHUB_API_ERROR",
@@ -211,6 +237,21 @@ export class GithubAppService {
     const cached = this.listingTokens.get(installationId);
     if (cached && cached.expiresAt > Date.now() + 5 * 60_000) return cached.token;
 
+    const data = await this.createListingTokenData(installationId);
+    this.listingTokens.set(installationId, {
+      token: data.token,
+      expiresAt: Date.parse(data.expires_at),
+    });
+    return data.token;
+  }
+
+  private async createListingToken(installationId: number): Promise<string> {
+    return (await this.createListingTokenData(installationId)).token;
+  }
+
+  private async createListingTokenData(
+    installationId: number,
+  ): Promise<z.infer<typeof accessTokenSchema>> {
     const response = await this.request(
       `${API_BASE}/app/installations/${installationId}/access_tokens`,
       {
@@ -219,12 +260,7 @@ export class GithubAppService {
         body: JSON.stringify({ permissions: { metadata: "read" } }),
       },
     );
-    const data = accessTokenSchema.parse(await response.json());
-    this.listingTokens.set(installationId, {
-      token: data.token,
-      expiresAt: Date.parse(data.expires_at),
-    });
-    return data.token;
+    return accessTokenSchema.parse(await this.readJson(response));
   }
 
   private githubHeaders(token?: string): Record<string, string> {
@@ -236,8 +272,46 @@ export class GithubAppService {
     };
   }
 
-  private fetch(input: string, init?: RequestInit): Promise<Response> {
-    return (this.fetchImpl ?? globalThis.fetch)(input, init);
+  private async fetch(input: string, init?: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const signal = init?.signal
+      ? AbortSignal.any([init.signal, controller.signal])
+      : controller.signal;
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(
+          new AppError("GITHUB_API_TIMEOUT", "GitHub no respondio a tiempo.", 503),
+        );
+      }, this.config.GITHUB_API_TIMEOUT_MS);
+    });
+    try {
+      const response = await Promise.race([
+        (this.fetchImpl ?? globalThis.fetch)(input, { ...init, signal }),
+        timeout,
+      ]);
+      this.responseControllers.set(response, controller);
+      return response;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  private async readJson(response: Response): Promise<unknown> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        this.responseControllers.get(response)?.abort();
+        reject(new AppError("GITHUB_API_TIMEOUT", "GitHub no respondio a tiempo.", 503));
+      }, this.config.GITHUB_API_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([response.json(), timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      this.responseControllers.delete(response);
+    }
   }
 
   private async request(input: string, init?: RequestInit): Promise<Response> {

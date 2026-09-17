@@ -241,12 +241,14 @@ hacia el host, que es justo lo que R1 evita.
 **`@react-pdf/renderer`.** Sin Chromium en el servidor. Hay que versionar los `.ttf` de las
 fuentes en el repo para que el build sea reproducible ([08](./08-reportes-pdf.md)).
 
-### A5 — Webhooks de GitHub en v1, ¿sí o no?
+### ~~A5 — Webhooks de GitHub en v1, ¿sí o no?~~ ✅ resuelta
 
-**Recomendación: sí, pero mínimos** (`installation.deleted`, `installation_repositories.*`).
-Sin ellos, si el usuario revoca desde GitHub la app queda con estado obsoleto y los runs
-fallan con errores confusos. La alternativa es re-sincronizar en cada carga del dashboard:
-más simple, más llamadas a la API, más latencia.
+**Sincronización on-demand en v1.** `GET /api/repos` actualiza instalaciones, acceso y metadata
+contra GitHub antes de responder, y el inicio de un run reutilizará la misma reconciliación.
+Prioriza llegar al flujo funcional sin requerir un endpoint público, firma HMAC, idempotencia ni
+manejo de entregas duplicadas. Los webhooks quedan como mejora posterior para reducir latencia y
+mantener el estado actualizado sin actividad del usuario, especialmente antes de agregar runs
+programados.
 
 ### ~~A6 — Alcance de ecosistemas~~ ✅ resuelta
 

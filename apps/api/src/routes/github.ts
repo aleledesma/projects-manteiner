@@ -25,6 +25,8 @@ interface AccessibleRepository extends GithubRepository {
   installationId: number;
 }
 
+let repositorySyncQueue = Promise.resolve();
+
 export function githubRoutes(app: FastifyInstance): void {
   app.get("/api/github/install-url", async (request) => {
     const userId = await requireUserId(app, request);
@@ -130,7 +132,7 @@ export function githubRoutes(app: FastifyInstance): void {
 
   app.get("/api/github/available-repos", async (request) => {
     const userId = await requireUserId(app, request);
-    const accessible = await accessibleRepositories(app, userId);
+    const accessible = await syncLinkedRepositories(app, userId);
     const linkedRows = app.database.sqlite
       .prepare("SELECT github_repo_id FROM repositories WHERE user_id = ? AND unlinked_at IS NULL")
       .all(userId) as Array<{ github_repo_id: number }>;
@@ -141,7 +143,7 @@ export function githubRoutes(app: FastifyInstance): void {
   app.post("/api/repos", async (request, reply) => {
     const userId = await requireUserId(app, request);
     const { githubRepoId } = linkRepositorySchema.parse(request.body);
-    const repository = (await accessibleRepositories(app, userId)).find(
+    const repository = (await syncLinkedRepositories(app, userId)).find(
       (candidate) => candidate.id === githubRepoId,
     );
     if (!repository) throw AppError.notFound("Repositorio no disponible para vincular.");
@@ -185,14 +187,18 @@ export function githubRoutes(app: FastifyInstance): void {
 
   app.get("/api/repos", async (request) => {
     const userId = await requireUserId(app, request);
+    await syncLinkedRepositories(app, userId);
     return app.database.sqlite
       .prepare(
-        `SELECT id, github_repo_id AS githubRepoId, owner, name, full_name AS fullName,
-                default_branch AS defaultBranch, private, primary_language AS primaryLanguage,
-                html_url AS htmlUrl, linked_at AS linkedAt
-         FROM repositories
-         WHERE user_id = ? AND unlinked_at IS NULL
-         ORDER BY full_name`,
+        `SELECT r.id, r.github_repo_id AS githubRepoId, r.owner, r.name,
+                 r.full_name AS fullName, r.default_branch AS defaultBranch, r.private,
+                 r.primary_language AS primaryLanguage, r.html_url AS htmlUrl,
+                 r.linked_at AS linkedAt
+          FROM repositories r
+          INNER JOIN github_installations gi ON gi.id = r.installation_id
+          WHERE r.user_id = ? AND r.unlinked_at IS NULL
+            AND gi.suspended_at IS NULL
+          ORDER BY r.full_name`,
       )
       .all(userId)
       .map((row) => ({
@@ -200,6 +206,144 @@ export function githubRoutes(app: FastifyInstance): void {
         private: (row as { private: number }).private === 1,
       }));
   });
+}
+
+interface InstallationRow {
+  id: string;
+  installationId: number;
+}
+
+export async function syncLinkedRepositories(
+  app: FastifyInstance,
+  userId: string,
+): Promise<AccessibleRepository[]> {
+  const previous = repositorySyncQueue;
+  let release!: () => void;
+  repositorySyncQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await performRepositorySync(app, userId);
+  } finally {
+    release();
+  }
+}
+
+async function performRepositorySync(
+  app: FastifyInstance,
+  userId: string,
+): Promise<AccessibleRepository[]> {
+  const installations = app.database.sqlite
+    .prepare(
+      `SELECT gi.id, gi.installation_id AS installationId
+       FROM github_installations gi
+       INNER JOIN github_user_installations gui ON gui.installation_id = gi.id
+       WHERE gui.user_id = ?`,
+    )
+    .all(userId) as InstallationRow[];
+
+  const snapshots = await Promise.all(
+    installations.map(async (local) => {
+      const installation = await app.githubApp.getInstallationIfExists(local.installationId);
+      const repositories =
+        installation && !installation.suspended_at
+          ? await app.githubApp.listInstallationRepositories(local.installationId, { refresh: true })
+          : [];
+      return { local, installation, repositories };
+    }),
+  );
+
+  const now = Date.now();
+  app.database.sqlite.transaction(() => {
+    for (const snapshot of snapshots) {
+      const { local, installation, repositories } = snapshot;
+      if (!installation) {
+        app.database.sqlite
+          .prepare(
+            "UPDATE github_installations SET suspended_at = ?, updated_at = ? WHERE id = ?",
+          )
+          .run(now, now, local.id);
+        app.database.sqlite
+          .prepare("DELETE FROM github_user_installations WHERE installation_id = ?")
+          .run(local.id);
+        app.database.sqlite
+          .prepare(
+            `UPDATE repositories
+             SET unlinked_at = COALESCE(unlinked_at, ?)
+             WHERE installation_id = ?`,
+          )
+          .run(now, local.id);
+        continue;
+      }
+
+      app.database.sqlite
+        .prepare(
+          `UPDATE github_installations
+           SET account_login = ?, account_type = ?, repository_selection = ?,
+               suspended_at = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          installation.account.login,
+          installation.account.type,
+          installation.repository_selection,
+          installation.suspended_at ? Date.parse(installation.suspended_at) : null,
+          now,
+          local.id,
+        );
+
+      if (installation.suspended_at) continue;
+      const accessibleById = new Map(repositories.map((repository) => [repository.id, repository]));
+      const linked = app.database.sqlite
+        .prepare(
+          `SELECT id, github_repo_id AS githubRepoId
+           FROM repositories
+           WHERE installation_id = ? AND unlinked_at IS NULL`,
+        )
+        .all(local.id) as Array<{ id: string; githubRepoId: number }>;
+
+      for (const row of linked) {
+        const repository = accessibleById.get(row.githubRepoId);
+        if (!repository) {
+          app.database.sqlite
+            .prepare("UPDATE repositories SET unlinked_at = ? WHERE id = ?")
+            .run(now, row.id);
+          continue;
+        }
+        app.database.sqlite
+          .prepare(
+            `UPDATE repositories
+             SET owner = ?, name = ?, full_name = ?, default_branch = ?, private = ?,
+                 primary_language = ?, html_url = ?
+             WHERE id = ?`,
+          )
+          .run(
+            repository.owner.login,
+            repository.name,
+            repository.full_name,
+            repository.default_branch,
+            repository.private ? 1 : 0,
+            repository.language,
+            repository.html_url,
+            row.id,
+          );
+      }
+    }
+  })();
+
+  const accessibleById = new Map<number, AccessibleRepository>();
+  for (const { local, installation, repositories } of snapshots) {
+    if (!installation || installation.suspended_at) continue;
+    for (const repository of repositories) {
+      accessibleById.set(repository.id, {
+        ...repository,
+        installationDbId: local.id,
+        installationId: local.installationId,
+      });
+    }
+  }
+  return [...accessibleById.values()].sort((a, b) => a.full_name.localeCompare(b.full_name));
 }
 
 async function requireUserId(app: FastifyInstance, request: FastifyRequest): Promise<string> {
@@ -221,34 +365,6 @@ function consumeInstallState(app: FastifyInstance, state: string, userId: string
   if (!row || row.user_id !== userId || row.expires_at <= Date.now()) {
     throw new AppError("INVALID_GITHUB_STATE", "El estado de instalacion es invalido o vencio.");
   }
-}
-
-async function accessibleRepositories(
-  app: FastifyInstance,
-  userId: string,
-): Promise<AccessibleRepository[]> {
-  const installations = app.database.sqlite
-    .prepare(
-      `SELECT gi.id, gi.installation_id
-       FROM github_installations gi
-       INNER JOIN github_user_installations gui ON gui.installation_id = gi.id
-       WHERE gui.user_id = ? AND gi.suspended_at IS NULL`,
-    )
-    .all(userId) as Array<{ id: string; installation_id: number }>;
-  const byGithubId = new Map<number, AccessibleRepository>();
-
-  for (const installation of installations) {
-    const repositories = await app.githubApp.listInstallationRepositories(installation.installation_id);
-    for (const repository of repositories) {
-      byGithubId.set(repository.id, {
-        ...repository,
-        installationDbId: installation.id,
-        installationId: installation.installation_id,
-      });
-    }
-  }
-
-  return [...byGithubId.values()].sort((a, b) => a.full_name.localeCompare(b.full_name));
 }
 
 function repositoryBody(repository: AccessibleRepository) {
