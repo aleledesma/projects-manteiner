@@ -92,13 +92,6 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
   );
   const agentRuntime = dependencies.agentRuntime
     ?? new DockerAgentRuntime(config, dependencies.agentDockerClient, dependencies.fetch);
-  const runs = new RunOrchestratorService(
-    database,
-    repositoryWorkspace,
-    agentRuntime,
-    providerCredentials,
-    dependencies.now,
-  );
   const app = Fastify({
     logger: {
       level: config.LOG_LEVEL,
@@ -143,7 +136,6 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
   app.decorate("githubApp", githubApp);
   app.decorate("docker", docker);
   app.decorate("repositoryWorkspace", repositoryWorkspace);
-  app.decorate("runs", runs);
   app.addHook("onClose", async () => {
     openAIOAuth.close();
     // Los runs vivos terminan antes de cerrar la base: si no, el `finally` que
@@ -173,6 +165,18 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
       providerCatalog.start((error) => app.log.warn({ err: error }, "no se pudo refrescar el catalogo"));
     });
   }
+
+  // Despues de crear `app` para que el orquestador pueda usar su logger: sin
+  // eso, un fallo inesperado de un run no dejaba ninguna huella.
+  const runs = new RunOrchestratorService(
+    database,
+    repositoryWorkspace,
+    agentRuntime,
+    providerCredentials,
+    dependencies.now,
+    app.log,
+  );
+  app.decorate("runs", runs);
 
   registerErrorHandler(app);
 

@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, it } from "node:test";
 
 import BetterSqlite3 from "better-sqlite3";
 
 import { openDatabase, type DatabaseConnection } from "./client.ts";
+
+/** Las migraciones que hay en disco, que es contra lo que se compara. */
+function migracionesEnDisco(): number {
+  const carpeta = fileURLToPath(new URL("./migrations", import.meta.url));
+  return readdirSync(carpeta).filter((archivo) => archivo.endsWith(".sql")).length;
+}
 
 const temporaryDirectories: string[] = [];
 const openConnections: DatabaseConnection[] = [];
@@ -77,7 +84,9 @@ describe("openDatabase", () => {
     const migrations = second.sqlite
       .prepare("SELECT count(*) AS count FROM __drizzle_migrations")
       .get() as { count: number };
-    assert.equal(migrations.count, 3);
+    // Cuenta las migraciones del directorio, no un numero a mano: si no, cada
+    // migracion nueva rompe el test sin decir nada util.
+    assert.equal(migrations.count, migracionesEnDisco());
   });
 
   it("migra usuarios previos, vincula GitHub y normaliza emails duplicados", () => {

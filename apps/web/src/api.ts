@@ -210,6 +210,8 @@ export type Run = {
   headline: string | null;
   errorCode: string | null;
   errorMessage: string | null;
+  /** JSON con los detalles del fallo: campos del schema o logs del contenedor. */
+  errorDetail: string | null;
   tokensInput: number | null;
   tokensOutput: number | null;
   costUsd: number | null;

@@ -188,13 +188,59 @@ function EnCurso() {
   );
 }
 
+/**
+ * Detalle del fallo. Se muestra entero a proposito: es la auditoria del propio
+ * usuario y sin el error real no hay forma de saber que hacer.
+ */
 function Fallo({ run }: { run: Run }) {
+  const detalle = parsearDetalle(run.errorDetail);
+
   return (
-    <Alert className="mt-6">
-      <span className="font-mono">{run.errorCode}</span>
-      {run.errorMessage ? ` — ${run.errorMessage}` : null}
-    </Alert>
+    <div className="mt-6 rounded-xl border border-sev-high/22 bg-sev-high/5 px-4 py-3.5">
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span className="font-mono text-[12.5px] text-[#dda0a5]">{run.errorCode}</span>
+        {run.errorMessage ? (
+          <span className="text-[13px]/[20px] text-ink-muted">{run.errorMessage}</span>
+        ) : null}
+      </div>
+
+      {detalle?.logs && detalle.logs.length > 0 ? (
+        <details className="mt-3 border-t border-white/6 pt-3">
+          <summary className="cursor-pointer text-[12.5px] text-ink-faint transition-colors hover:text-ink-muted">
+            Últimas líneas del contenedor ({detalle.logs.length})
+          </summary>
+          <pre className="mt-2.5 max-h-[280px] overflow-auto rounded-[10px] border border-white/6 bg-sunken px-3 py-2.5 font-mono text-[11.5px]/[17px] whitespace-pre-wrap text-ink-muted">
+            {detalle.logs.join(String.fromCharCode(10))}
+          </pre>
+        </details>
+      ) : null}
+
+      {detalle?.otros ? (
+        <details className="mt-3 border-t border-white/6 pt-3">
+          <summary className="cursor-pointer text-[12.5px] text-ink-faint transition-colors hover:text-ink-muted">
+            Detalle
+          </summary>
+          <pre className="mt-2.5 max-h-[280px] overflow-auto rounded-[10px] border border-white/6 bg-sunken px-3 py-2.5 font-mono text-[11.5px]/[17px] whitespace-pre-wrap text-ink-muted">
+            {detalle.otros}
+          </pre>
+        </details>
+      ) : null}
+    </div>
   );
+}
+
+function parsearDetalle(crudo: string | null): { logs?: string[]; otros?: string } | null {
+  if (!crudo) return null;
+  try {
+    const valor = JSON.parse(crudo) as Record<string, unknown>;
+    const logs = Array.isArray(valor["logs"]) ? (valor["logs"] as string[]) : undefined;
+    const resto = { ...valor };
+    delete resto["logs"];
+    const otros = Object.keys(resto).length > 0 ? JSON.stringify(resto, null, 2) : undefined;
+    return { logs, otros };
+  } catch {
+    return { otros: crudo };
+  }
 }
 
 function Resumen({ report }: { report: Report }) {

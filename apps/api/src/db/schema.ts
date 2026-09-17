@@ -249,6 +249,7 @@ export const runs = sqliteTable(
     prBranch: text("pr_branch"),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
+    errorDetail: text("error_detail"),
     tokensInput: integer("tokens_input"),
     tokensOutput: integer("tokens_output"),
     costUsd: real("cost_usd"),

@@ -36,6 +36,7 @@ export function runRoutes(app: FastifyInstance): void {
                 r.base_branch AS baseBranch, r.health_score AS healthScore,
                 r.findings_count AS findingsCount, r.headline,
                 r.error_code AS errorCode, r.error_message AS errorMessage,
+                r.error_detail AS errorDetail,
                 r.tokens_input AS tokensInput, r.tokens_output AS tokensOutput,
                 r.cost_usd AS costUsd, r.queued_at AS queuedAt,
                 r.started_at AS startedAt, r.finished_at AS finishedAt,

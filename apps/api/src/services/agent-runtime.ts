@@ -265,20 +265,36 @@ export class DockerAgentRuntime implements AgentRuntime {
       throw new AppError("PROVIDER_AUTH_FAILED", "El proveedor rechazo la credencial.", 422);
     }
 
-    const session = unwrap(
-      await client.session.create({ body: { title: `manteiner-${input.runId}` } }),
-    ) as { id?: string } | undefined;
+    let session: { id?: string } | undefined;
+    try {
+      session = unwrap(
+        await client.session.create({ body: { title: `manteiner-${input.runId}` } }),
+      ) as { id?: string } | undefined;
+    } catch (cause) {
+      throw new AppError(
+        "AGENT_SESSION_FAILED",
+        `opencode no pudo crear la sesion: ${mensajeDe(cause)}`,
+        502,
+      );
+    }
     if (!session?.id) throw new AppError("AGENT_SESSION_FAILED", "opencode no devolvio una sesion.", 502);
 
     const schema = buildMaintenanceReportJsonSchema();
-    const respuesta = await client.session.prompt({
-      path: { id: session.id },
-      body: {
-        model: { providerID: input.providerId, modelID: input.modelId },
-        parts: [{ type: "text", text: PEDIDO }],
-        format: { type: "json_schema", schema } as never,
-      } as never,
-    });
+    let respuesta: unknown;
+    try {
+      respuesta = await client.session.prompt({
+        path: { id: session.id },
+        body: {
+          model: { providerID: input.providerId, modelID: input.modelId },
+          parts: [{ type: "text", text: PEDIDO }],
+          format: { type: "json_schema", schema } as never,
+        } as never,
+      });
+    } catch (cause) {
+      // Antes esto salia como INTERNAL_ERROR sin mensaje: un fallo del SDK o del
+      // proveedor a mitad de la sesion era indistinguible de un bug nuestro.
+      throw new AppError("AGENT_FAILED", `La sesion del agente fallo: ${mensajeDe(cause)}`, 502);
+    }
 
     const info = (unwrap(respuesta) as { info?: Record<string, unknown> } | undefined)?.info;
     if (info?.["error"]) throw errorDelProveedor(info["error"]);
@@ -322,19 +338,56 @@ export class DockerAgentRuntime implements AgentRuntime {
     }
   }
 
-  /** Traduce un fallo tardio usando el estado real del contenedor. */
+  /**
+   * Enriquece un fallo con lo que solo se puede leer antes de borrar el
+   * contenedor: si lo mato el OOM killer, y sus ultimas lineas de log.
+   *
+   * Los logs solo se adjuntan en runs fallidos (doc 05) y pueden contener
+   * fragmentos del repositorio: se borran junto con el run.
+   */
   async #enriquecerError(error: unknown, container: AgentContainer | undefined): Promise<unknown> {
-    if (!container || !(error instanceof AppError)) return error;
-    if (error.code !== "RUN_TIMEOUT" && error.code !== "AGENT_SESSION_FAILED") return error;
+    if (!container) return error;
+
+    let oom = false;
     try {
       const estado = await this.#dockerCall((abortSignal) => container.inspect({ abortSignal }));
-      if (estado.State.OOMKilled) {
-        return new AppError("CONTAINER_OOM", "El contenedor del agente se quedo sin memoria.", 502);
-      }
+      oom = estado.State.OOMKilled === true;
     } catch {
-      // Si no se puede inspeccionar, vale el error original.
+      // Si no se puede inspeccionar, vale lo que ya sabemos.
     }
-    return error;
+
+    const logs = await this.#ultimasLineas(container);
+    if (oom) {
+      return new AppError(
+        "CONTAINER_OOM",
+        `El contenedor del agente se quedo sin memoria (limite ${this.config.AGENT_MEMORY_MB} MB).`,
+        502,
+        { logs },
+      );
+    }
+    if (error instanceof AppError) {
+      return new AppError(error.code, error.message, error.statusCode, {
+        ...(typeof error.details === "object" && error.details ? error.details : {}),
+        logs,
+      });
+    }
+    return new AppError("AGENT_FAILED", mensajeDe(error), 502, { logs });
+  }
+
+  /** Cola del log del contenedor, para que un fallo sea diagnosticable. */
+  async #ultimasLineas(container: AgentContainer): Promise<string[]> {
+    try {
+      const crudo = await this.#dockerCall(() =>
+        container.logs({ stdout: true, stderr: true, tail: 40, follow: false }),
+      );
+      return demultiplexDockerStream(Buffer.from(crudo))
+        .split(/\r?\n/)
+        .map((linea) => linea.trimEnd())
+        .filter((linea) => linea.length > 0)
+        .slice(-40);
+    } catch {
+      return [];
+    }
   }
 
   #dockerCall<T>(operation: (abortSignal: AbortSignal) => Promise<T>): Promise<T> {
@@ -396,6 +449,16 @@ function errorDelProveedor(error: unknown): AppError {
     return new AppError("PROVIDER_AUTH_FAILED", "El proveedor rechazo la credencial.", 422);
   }
   return new AppError("AGENT_FAILED", "El agente no pudo completar la auditoria.", 502);
+}
+
+function mensajeDe(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error).slice(0, 300);
+  } catch {
+    return "error desconocido";
+  }
 }
 
 function unwrap(value: unknown): unknown {

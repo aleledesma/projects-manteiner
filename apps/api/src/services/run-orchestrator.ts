@@ -24,6 +24,11 @@ import type { AgentRuntime } from "./agent-runtime.ts";
 import type { ProviderCredentialService } from "./provider-credentials.ts";
 import type { RepositoryWorkspaceService } from "./repository-workspace.ts";
 
+/** Lo minimo que el orquestador necesita del logger de Fastify. */
+export interface RunLogger {
+  error(contexto: Record<string, unknown>, mensaje: string): void;
+}
+
 export interface StartRunInput {
   readonly userId: string;
   readonly repositoryId: string;
@@ -60,6 +65,7 @@ export class RunOrchestratorService {
     private readonly agent: AgentRuntime,
     private readonly credentials: ProviderCredentialService,
     private readonly now: () => number = Date.now,
+    private readonly logger: RunLogger = { error: () => {} },
   ) {}
 
   /**
@@ -127,9 +133,23 @@ export class RunOrchestratorService {
       return { id: runId, status: "succeeded", errorCode: null };
     } catch (error) {
       const { code, message } = describirFallo(error);
+      // Sin esto el error se perdia entero: `#ejecutar` no rejecta nunca, asi
+      // que el `catch` de la ruta no dispara y la unica huella quedaba siendo
+      // "Fallo inesperado", que no sirve para diagnosticar nada.
+      this.logger.error(
+        {
+          runId,
+          code,
+          repositoryId: input.repositoryId,
+          err: error,
+          detalle: error instanceof AppError ? error.details : undefined,
+        },
+        "la auditoria fallo",
+      );
       this.#marcar(runId, code === "RUN_TIMEOUT" ? "timed_out" : "failed", {
         error_code: code,
         error_message: message,
+        error_detail: detalleParaElUsuario(error),
         finished_at: this.now(),
       });
       return { id: runId, status: code === "RUN_TIMEOUT" ? "timed_out" : "failed", errorCode: code };
@@ -313,5 +333,19 @@ export class RunOrchestratorService {
 
 function describirFallo(error: unknown): { code: string; message: string } {
   if (error instanceof AppError) return { code: error.code, message: error.message };
-  return { code: "INTERNAL_ERROR", message: "Fallo inesperado durante la auditoria." };
+  // El mensaje real, no uno generico: es la auditoria del propio usuario y sin
+  // esto el fallo es indiagnosticable desde la UI. El stack queda solo en el log.
+  const mensaje = error instanceof Error ? error.message : String(error);
+  return { code: "INTERNAL_ERROR", message: mensaje.slice(0, 500) };
+}
+
+/**
+ * Detalle estructurado para la UI: los `details` del AppError (por ejemplo, que
+ * campo del schema fallo) o los ultimos logs del contenedor del agente.
+ */
+function detalleParaElUsuario(error: unknown): string | null {
+  if (error instanceof AppError && error.details !== undefined) {
+    return JSON.stringify(error.details).slice(0, 8_000);
+  }
+  return null;
 }
