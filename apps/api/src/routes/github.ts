@@ -130,6 +130,44 @@ export function githubRoutes(app: FastifyInstance): void {
     return reply.redirect(`${app.config.WEB_URL}/?github=connected`);
   });
 
+  /**
+   * Instalaciones de la App alcanzables por el usuario, con cuantos repos ve
+   * cada una y cuantos tiene vinculados. Sincroniza primero: si la instalacion
+   * fue borrada o suspendida en GitHub, la vista tiene que decirlo.
+   */
+  app.get("/api/github/installations", async (request) => {
+    const userId = await requireUserId(app, request);
+    const accesibles = await syncLinkedRepositories(app, userId);
+
+    const accesiblesPorInstalacion = new Map<string, number>();
+    for (const repository of accesibles) {
+      accesiblesPorInstalacion.set(
+        repository.installationDbId,
+        (accesiblesPorInstalacion.get(repository.installationDbId) ?? 0) + 1,
+      );
+    }
+
+    const rows = app.database.sqlite
+      .prepare(
+        `SELECT gi.id, gi.installation_id AS installationId, gi.account_login AS accountLogin,
+                gi.account_type AS accountType, gi.repository_selection AS repositorySelection,
+                gi.suspended_at AS suspendedAt,
+                (SELECT count(*) FROM repositories r
+                  WHERE r.installation_id = gi.id AND r.user_id = ? AND r.unlinked_at IS NULL) AS linkedRepos
+         FROM github_installations gi
+         INNER JOIN github_user_installations gui ON gui.installation_id = gi.id
+         WHERE gui.user_id = ?
+         ORDER BY gi.account_type, gi.account_login`,
+      )
+      .all(userId, userId) as Array<Record<string, unknown> & { id: string; suspendedAt: number | null }>;
+
+    return rows.map((row) => ({
+      ...row,
+      suspended: row.suspendedAt !== null,
+      accessibleRepos: accesiblesPorInstalacion.get(row.id) ?? 0,
+    }));
+  });
+
   app.get("/api/github/available-repos", async (request) => {
     const userId = await requireUserId(app, request);
     const accessible = await syncLinkedRepositories(app, userId);

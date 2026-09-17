@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@manteiner/contracts": "*",
+    "@opencode-ai/sdk": "^1.18.31",
     "better-auth": "^1.6.23",
     "better-sqlite3": "^12.11.1",
     "dockerode": "^5.0.1",

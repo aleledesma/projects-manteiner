@@ -49,12 +49,24 @@ describe("servidor", () => {
       GITHUB_APP_CLIENT_SECRET: "github-app-client-secret",
       GITHUB_APP_PRIVATE_KEY_BASE64: Buffer.from(githubPrivateKey).toString("base64"),
       DATABASE_PATH: join(temporaryDirectory, "manteiner.db"),
+      PROVIDER_CATALOG_PATH: join(temporaryDirectory, "provider-catalog.json"),
     } as NodeJS.ProcessEnv);
     app = buildServer(config, {
       dockerClient: {
         ping: async () => "OK",
         version: async () =>
           ({ Version: "28.0.0", ApiVersion: "1.48", Os: "linux", Arch: "amd64" }) as never,
+      },
+      providerRuntime: {
+        getCatalog: async () => [{
+          id: "anthropic",
+          name: "Anthropic",
+          models: [{ id: "claude-test", name: "Claude Test", capabilities: { toolcall: true } }],
+        }],
+        validateApiKey: async (providerId, apiKey) => {
+          assert.equal(providerId, "anthropic");
+          assert.equal(apiKey, "api-key-secret");
+        },
       },
     });
   });
@@ -92,6 +104,25 @@ describe("servidor", () => {
 
     assert.equal(res.statusCode, 401);
     assert.equal(res.json().error.code, "UNAUTHENTICATED");
+  });
+
+  it("todas las rutas de proveedores exigen una sesion", async () => {
+    const requests = [
+      { method: "GET", url: "/api/providers" },
+      { method: "GET", url: "/api/providers/catalog" },
+      { method: "POST", url: "/api/providers", payload: {} },
+      { method: "POST", url: "/api/providers/catalog/refresh", payload: {} },
+      { method: "POST", url: "/api/providers/oauth/openai/start", payload: {} },
+      { method: "GET", url: "/api/providers/oauth/openai/status?pollToken=11111111-1111-4111-8111-111111111111" },
+      { method: "DELETE", url: "/api/providers/11111111-1111-4111-8111-111111111111" },
+      { method: "PUT", url: "/api/preferences/model", payload: {} },
+      { method: "PATCH", url: "/api/repos/11111111-1111-4111-8111-111111111111", payload: {} },
+    ];
+    for (const request of requests) {
+      const response = await app.inject(request as never);
+      assert.equal(response.statusCode, 401, `${request.method} ${request.url}`);
+      assert.equal(response.json().error.code, "UNAUTHENTICATED");
+    }
   });
 
   it("inicia el OAuth de GitHub mediante Better Auth", async () => {
@@ -301,6 +332,42 @@ describe("servidor", () => {
         hasRepos: false,
       });
 
+      const createProvider = await app.inject({
+        method: "POST",
+        url: "/api/providers",
+        headers: { cookie: cookieHeader(cookies) },
+        payload: { providerId: "anthropic", apiKey: "api-key-secret", label: "Personal" },
+      });
+      assert.equal(createProvider.statusCode, 201);
+      assert.equal(createProvider.json().lastFour, "cret");
+      assert.doesNotMatch(createProvider.body, /api-key-secret/);
+      const providerCredentialId = createProvider.json().id as string;
+
+      const providers = await app.inject({
+        method: "GET",
+        url: "/api/providers",
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.equal(providers.statusCode, 200);
+      assert.equal(providers.json()[0].status, "active");
+      assert.doesNotMatch(providers.body, /api-key-secret/);
+
+      const catalog = await app.inject({
+        method: "GET",
+        url: "/api/providers/catalog",
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.equal(catalog.statusCode, 200);
+      assert.equal(catalog.json().providers[0].models[0].id, "claude-test");
+
+      const globalPreference = await app.inject({
+        method: "PUT",
+        url: "/api/preferences/model",
+        headers: { cookie: cookieHeader(cookies) },
+        payload: { providerId: "anthropic", modelId: "claude-test" },
+      });
+      assert.equal(globalPreference.statusCode, 200);
+
       const installUrl = await app.inject({
         method: "GET",
         url: "/api/github/install-url",
@@ -380,6 +447,17 @@ describe("servidor", () => {
       });
       assert.equal(link.statusCode, 201);
       assert.equal(link.json().defaultBranch, "main");
+      const repositoryId = app.database.sqlite
+        .prepare("SELECT id FROM repositories WHERE github_repo_id = 999")
+        .get() as { id: string };
+      const repositoryPreference = await app.inject({
+        method: "PATCH",
+        url: `/api/repos/${repositoryId.id}`,
+        headers: { cookie: cookieHeader(cookies) },
+        payload: { providerId: "anthropic", modelId: "claude-test" },
+      });
+      assert.equal(repositoryPreference.statusCode, 200);
+      assert.equal(repositoryPreference.json().repositoryId, repositoryId.id);
 
       const linkOrganizationRepository = await app.inject({
         method: "POST",
@@ -398,6 +476,26 @@ describe("servidor", () => {
       assert.deepEqual(
         repositories.json().map((repository: { fullName: string }) => repository.fullName),
         ["github/project", "octocat/hello-world"],
+      );
+
+      const installations = await app.inject({
+        method: "GET",
+        url: "/api/github/installations",
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.equal(installations.statusCode, 200);
+      assert.deepEqual(
+        installations.json().map((instalacion: Record<string, unknown>) => ({
+          accountLogin: instalacion.accountLogin,
+          accountType: instalacion.accountType,
+          accessibleRepos: instalacion.accessibleRepos,
+          linkedRepos: instalacion.linkedRepos,
+          suspended: instalacion.suspended,
+        })),
+        [
+          { accountLogin: "github", accountType: "Organization", accessibleRepos: 1, linkedRepos: 1, suspended: false },
+          { accountLogin: "octocat", accountType: "User", accessibleRepos: 1, linkedRepos: 1, suspended: false },
+        ],
       );
 
       failNextRepositoryList = true;
@@ -499,6 +597,22 @@ describe("servidor", () => {
         headers: { cookie: cookieHeader(cookies) },
       });
       assert.equal(withoutInstallations.json().onboarding.hasInstallation, false);
+
+      app.database.sqlite
+        .prepare("UPDATE provider_credentials SET status = 'invalid' WHERE id = ?")
+        .run(providerCredentialId);
+      const invalidProvider = await app.inject({
+        method: "GET",
+        url: "/api/me",
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.equal(invalidProvider.json().onboarding.hasProvider, false);
+      const deleteProvider = await app.inject({
+        method: "DELETE",
+        url: `/api/providers/${providerCredentialId}`,
+        headers: { cookie: cookieHeader(cookies) },
+      });
+      assert.equal(deleteProvider.statusCode, 204);
 
       const logout = await app.inject({
         method: "POST",

@@ -14,10 +14,16 @@ import { registerErrorHandler } from "./errors.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { githubRoutes } from "./routes/github.ts";
 import { healthRoutes } from "./routes/health.ts";
+import { providerRoutes } from "./routes/providers.ts";
 import { createAuth, type AppAuth } from "./services/auth.ts";
 import { CredentialCrypto } from "./services/credential-crypto.ts";
 import { DockerService, type DockerClient } from "./services/docker.ts";
 import { GithubAppService } from "./services/github-app.ts";
+import { OpenAIOAuthService } from "./services/openai-oauth.ts";
+import { ModelPreferenceService } from "./services/model-preferences.ts";
+import { DockerOpencodeRuntime } from "./services/opencode-runtime.ts";
+import { ProviderCatalogService, type OpencodeProviderRuntime } from "./services/provider-catalog.ts";
+import { ProviderCredentialService } from "./services/provider-credentials.ts";
 import {
   DockerWorkspaceRuntime,
   RepositoryWorkspaceService,
@@ -27,11 +33,48 @@ import {
 export interface ServerDependencies {
   dockerClient?: DockerClient;
   workspaceDockerClient?: WorkspaceDockerClient;
+  fetch?: typeof fetch;
+  now?: () => number;
+  providerRuntime?: OpencodeProviderRuntime;
 }
 
 export function buildServer(config: Config, dependencies: ServerDependencies = {}): FastifyInstance {
   const database = openDatabase(config.DATABASE_PATH);
   const credentialCrypto = new CredentialCrypto(masterKeyBytes(config));
+  let providerCredentials!: ProviderCredentialService;
+  const openAIOAuth = new OpenAIOAuthService({
+    fetch: dependencies.fetch,
+    now: dependencies.now,
+    httpTimeoutMs: config.PROVIDER_HTTP_TIMEOUT_MS,
+    flowTimeoutMs: config.OAUTH_DEVICE_TIMEOUT_MS,
+    onAuthorized: async (userId, credential) => {
+      providerCredentials.save(userId, "openai", credential, { label: "ChatGPT Plus/Pro" });
+    },
+  });
+  providerCredentials = new ProviderCredentialService(
+    database,
+    credentialCrypto,
+    (credential) => openAIOAuth.refresh(credential),
+    config.RUN_TIMEOUT_MS + config.REFRESH_MARGIN_MS,
+    dependencies.now,
+  );
+  const providerRuntime = dependencies.providerRuntime ?? new DockerOpencodeRuntime(config);
+  const providerCatalog = new ProviderCatalogService({
+    runtime: providerRuntime,
+    cachePath: config.PROVIDER_CATALOG_PATH,
+    maxAgeMs: config.PROVIDER_CATALOG_MAX_AGE_MS,
+    now: dependencies.now,
+    defaultCredential: () => {
+      const active = providerCredentials.firstActive();
+      return active ? { providerId: active.providerId, payload: active.payload } : undefined;
+    },
+  });
+  const modelPreferences = new ModelPreferenceService(
+    database,
+    providerCredentials,
+    providerCatalog,
+    dependencies.now,
+  );
   const auth = createAuth(config, database.db);
   const githubApp = new GithubAppService(config);
   const docker = new DockerService(config, dependencies.dockerClient);
@@ -76,17 +119,31 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
   app.decorate("db", database.db);
   app.decorate("database", database);
   app.decorate("credentialCrypto", credentialCrypto);
+  app.decorate("providerCredentials", providerCredentials);
+  app.decorate("openAIOAuth", openAIOAuth);
+  app.decorate("providerCatalog", providerCatalog);
+  app.decorate("modelPreferences", modelPreferences);
   app.decorate("auth", auth);
   app.decorate("githubApp", githubApp);
   app.decorate("docker", docker);
   app.decorate("repositoryWorkspace", repositoryWorkspace);
-  app.addHook("onClose", () => database.close());
+  app.addHook("onClose", async () => {
+    openAIOAuth.close();
+    await providerCatalog.close();
+    database.close();
+  });
+  if (!config.isTest) {
+    app.addHook("onReady", () => {
+      providerCatalog.start((error) => app.log.warn({ err: error }, "no se pudo refrescar el catalogo"));
+    });
+  }
 
   registerErrorHandler(app);
 
   app.register(healthRoutes, { prefix: "/api" });
   authRoutes(app);
   githubRoutes(app);
+  providerRoutes(app);
 
   return app;
 }
@@ -97,6 +154,10 @@ declare module "fastify" {
     db: AppDatabase;
     database: DatabaseConnection;
     credentialCrypto: CredentialCrypto;
+    providerCredentials: ProviderCredentialService;
+    openAIOAuth: OpenAIOAuthService;
+    providerCatalog: ProviderCatalogService;
+    modelPreferences: ModelPreferenceService;
     auth: AppAuth;
     githubApp: GithubAppService;
     docker: DockerService;

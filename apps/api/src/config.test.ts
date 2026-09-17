@@ -38,6 +38,10 @@ describe("loadConfig", () => {
     assert.equal(config.GIT_IMAGE, "manteiner-git:0.1.0");
     assert.equal(config.MAX_REPO_SIZE_KB, 2_000_000);
     assert.equal(config.CLONE_TIMEOUT_MS, 300_000);
+    assert.equal(config.AGENT_IMAGE, "manteiner-agent:0.1.0");
+    assert.equal(config.PROVIDER_CATALOG_MAX_AGE_MS, 86_400_000);
+    assert.equal(config.RUN_TIMEOUT_MS, 1_800_000);
+    assert.equal(config.REFRESH_MARGIN_MS, 300_000);
     assert.equal(config.GITHUB_API_TIMEOUT_MS, 10_000);
     assert.equal(config.isProduction, false);
   });
@@ -94,6 +98,13 @@ describe("loadConfig", () => {
   it("valida el timeout de la API de GitHub", () => {
     assert.equal(loadConfig(env({ GITHUB_API_TIMEOUT_MS: "5000" })).GITHUB_API_TIMEOUT_MS, 5_000);
     assert.throws(() => loadConfig(env({ GITHUB_API_TIMEOUT_MS: "99" })), ConfigError);
+  });
+
+  it("valida la configuracion de proveedores", () => {
+    assert.equal(loadConfig(env({ PROVIDER_HTTP_TIMEOUT_MS: "5000" })).PROVIDER_HTTP_TIMEOUT_MS, 5_000);
+    assert.throws(() => loadConfig(env({ PROVIDER_HTTP_TIMEOUT_MS: "99" })), ConfigError);
+    assert.throws(() => loadConfig(env({ AGENT_IMAGE: "   " })), ConfigError);
+    assert.throws(() => loadConfig(env({ OAUTH_DEVICE_TIMEOUT_MS: "1000" })), ConfigError);
   });
 
   it("rechaza una MASTER_KEY que no sean 32 bytes", () => {
