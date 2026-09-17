@@ -183,6 +183,24 @@ export class ProviderCredentialService {
         cause,
       );
     }
+
+    // Antes se devolvia el token nuevo sin comprobar nada: si el proveedor lo
+    // emite con menos vida que la que el run necesita (OpenAI da 1h y
+    // RUN_TIMEOUT_MS admite hasta 2h), el run arrancaba con un token que se
+    // sabia que iba a vencer a mitad, y no hay forma de reinyectarlo.
+    if (refreshed.expires < this.now() + this.requiredOAuthLifetimeMs) {
+      throw new AppError(
+        "PROVIDER_TOKEN_TOO_SHORT",
+        "El proveedor emitio un token que vence antes de que la auditoria pueda terminar. " +
+          "Baja RUN_TIMEOUT_MS o usa una API key en vez de la suscripcion.",
+        412,
+        {
+          vidaDelTokenMs: refreshed.expires - this.now(),
+          vidaNecesariaMs: this.requiredOAuthLifetimeMs,
+        },
+      );
+    }
+
     return refreshed;
   }
 

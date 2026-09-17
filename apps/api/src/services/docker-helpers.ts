@@ -62,3 +62,48 @@ export function demultiplexDockerStream(raw: Buffer): string {
   // Si no venia multiplexado (TTY activo) el bucle no avanza: se devuelve crudo.
   return offset === 0 ? raw.toString("utf8") : salida;
 }
+
+interface DispatcherLargo {
+  readonly dispatcher: unknown;
+  close(): Promise<void>;
+}
+
+/**
+ * Dispatcher HTTP con timeouts largos, para pedidos que tardan minutos.
+ *
+ * El `fetch` de Node aborta a los 300s una respuesta cuyas cabeceras tardan
+ * (`UND_ERR_HEADERS_TIMEOUT`, medido). La sesion del agente tarda justamente
+ * eso, porque opencode mantiene el pedido abierto mientras el modelo trabaja.
+ *
+ * La clase `Agent` sale del dispatcher global de Node, no del paquete `undici`:
+ * el `fetch` nativo valida que la instancia sea de SU undici interno y rechaza
+ * cualquier otra con `UND_ERR_INVALID_ARG`. Instalar el paquete y usar su
+ * `fetch` tampoco sirve, porque el SDK de opencode llama `fetch(request)` con
+ * un `Request` de Node que ese fetch no reconoce.
+ *
+ * Devuelve `undefined` si Node cambia de mecanismo: es mejor correr con el
+ * timeout por defecto que romper el arranque.
+ */
+export async function crearDispatcherLargo(timeoutMs: number): Promise<DispatcherLargo | undefined> {
+  const clave = Symbol.for("undici.globalDispatcher.1");
+  let global = (globalThis as Record<symbol, unknown>)[clave];
+
+  if (!global) {
+    // Se crea de forma perezosa: un pedido a un puerto cerrado lo materializa
+    // en milisegundos sin salir de loopback.
+    await fetch("http://127.0.0.1:1/").catch(() => {});
+    global = (globalThis as Record<symbol, unknown>)[clave];
+  }
+
+  const Agent = (global as { constructor?: unknown } | undefined)?.constructor as
+    | (new (opciones: Record<string, unknown>) => { close(): Promise<void> })
+    | undefined;
+  if (typeof Agent !== "function") return undefined;
+
+  try {
+    const dispatcher = new Agent({ headersTimeout: timeoutMs, bodyTimeout: timeoutMs });
+    return { dispatcher, close: () => dispatcher.close() };
+  } catch {
+    return undefined;
+  }
+}

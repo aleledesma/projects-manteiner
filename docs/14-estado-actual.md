@@ -104,6 +104,44 @@ porque son las trampas que hacen perder horas.
 | `ALLOWED_MODELS` del código fuente | **No es el catálogo efectivo.** Hay 15 modelos con tool calling, incluido `gpt-5.6-terra`. Leer siempre `config.providers()` autenticado. |
 | Con suscripción se puede estimar el costo | **No:** viene `cost: 0`. La estimación solo sirve para proveedores con API key. |
 
+### Sobre `fetch` de Node y las sesiones largas
+
+**Medido el 2026-09-17.** Un `fetch` de Node cuya respuesta tarda en mandar las cabeceras
+**muere a los 303 s** con `UND_ERR_HEADERS_TIMEOUT`, que sale como un `fetch failed` sin más
+detalle. Es el `headersTimeout` por defecto de undici.
+
+La sesión del agente tarda exactamente eso: `opencode serve` mantiene el pedido HTTP abierto
+mientras el modelo trabaja y recién al final responde. Resultado: tres auditorías reales
+murieron a los 311 s, 312 s y una sobrevivió con 285 s. `RUN_TIMEOUT_MS` decía 30 minutos y no
+servía de nada, porque **el transporte cortaba antes que el deadline de la aplicación**.
+
+🟢 `crearDispatcherLargo()` (en `docker-helpers.ts`) arma un dispatcher con `headersTimeout` y
+`bodyTimeout` en `RUN_TIMEOUT_MS + 60 s`, y se pasa como `dispatcher` **solo** en el fetch del
+agente. No se toca el dispatcher global: las llamadas a GitHub **sí** tienen que fallar rápido.
+
+⚠️ **Dos callejones sin salida, ya recorridos.** La clase `Agent` hay que sacarla del dispatcher
+global de Node (`globalThis[Symbol.for("undici.globalDispatcher.1")].constructor`), no del
+paquete `undici`:
+
+| Intento | Qué pasa |
+|---|---|
+| `new Agent()` del paquete `undici` + `fetch` global | `UND_ERR_INVALID_ARG`: el fetch nativo valida que la instancia sea de **su** undici interno |
+| `fetch` del paquete `undici` | `ERR_INVALID_URL: [object Request]`: el SDK de opencode llama `fetch(request)` con un `Request` de Node que ese fetch no reconoce |
+
+⚠️ La regla general: **cualquier deadline de transporte tiene que ser mayor que el deadline de
+la aplicación que lo contiene.** Si no, el error que ves no describe lo que pasó.
+
+### Sobre la imagen del agente
+
+⚠️ La imagen **tiene que llevar `git` y un gestor de paquetes**. Estuvo un tiempo sin ninguno de
+los dos: el agente corre con `bash: allow` y su trabajo es justamente mirar la historia del repo
+y el estado de las dependencias, así que cada comando que intentaba fallaba en silencio y el
+diff salía siempre vacío. El doc 05 describía una imagen `node:22-bookworm-slim` que ya no era
+la real; hoy es `oven/bun:1.3.10-alpine` + `git ca-certificates curl nodejs npm`.
+
+🟢 También lleva `git config --system --add safe.directory /work/repo`: el volumen viene del
+contenedor de clonado con otro dueño y git se niega a operar sobre un repo ajeno.
+
 ### Sobre las credenciales de OpenAI
 
 - El access token dura **10 días**; el refresh token **rota en cada uso**.

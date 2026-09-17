@@ -20,6 +20,7 @@ import type { Config } from "../config.ts";
 import { AppError } from "../errors.ts";
 import type { ProviderCredentialPayload } from "./credential-crypto.ts";
 import {
+  crearDispatcherLargo,
   delay,
   demultiplexDockerStream,
   dockerStatusCode,
@@ -64,7 +65,7 @@ interface AgentContainer {
 }
 
 interface AgentExec {
-  start(options: { hijackedStream?: boolean; stdin?: boolean }): Promise<NodeJS.ReadableStream>;
+  start(options: { stdin?: boolean; Detach?: boolean }): Promise<NodeJS.ReadableStream>;
   inspect(): Promise<{ ExitCode: number | null }>;
 }
 
@@ -77,13 +78,42 @@ export interface AgentRuntime {
   run(input: AgentRunInput): Promise<AgentRunOutput>;
 }
 
+/**
+ * Margen sobre `RUN_TIMEOUT_MS` para los timeouts de transporte.
+ *
+ * El `fetch` de Node aborta una respuesta cuyas cabeceras tardan mas de 300s
+ * (el default de undici). La sesion del agente tarda justamente eso: el
+ * servidor de opencode mantiene el pedido abierto mientras el modelo trabaja y
+ * recien despues manda la respuesta. Sin subir este limite, cualquier auditoria
+ * de mas de cinco minutos muere con un "fetch failed" que no dice nada, sin
+ * importar lo que diga RUN_TIMEOUT_MS.
+ *
+ * Quien tiene que cortar es `withDeadline` con RUN_TIMEOUT_MS, no el transporte.
+ */
+const MARGEN_TRANSPORTE_MS = 60_000;
+
+/** Tope del diff que cruza a memoria del proceso de la API. */
+const MAX_DIFF_BYTES = 4 * 1024 * 1024;
+
+/** El default de undici que hay que superar. Solo se usa en los tests. */
+export const UNDICI_HEADERS_TIMEOUT_POR_DEFECTO_MS = 300_000;
+
+/** Expuesto para poder verificar que el transporte no corta antes que el run. */
+export function timeoutDeTransporte(runTimeoutMs: number): number {
+  return runTimeoutMs + MARGEN_TRANSPORTE_MS;
+}
+
 export class DockerAgentRuntime implements AgentRuntime {
   readonly #client: AgentDockerClient;
+  /** Contenedores que no se pudieron borrar. Los levanta la limpieza al arrancar. */
+  readonly #huerfanos: string[] = [];
 
   constructor(
     private readonly config: Config,
     client?: AgentDockerClient,
     private readonly hostFetch: typeof fetch = globalThis.fetch,
+    /** Aviso de que quedo un contenedor sin borrar, para que se loguee. */
+    private readonly onCleanupFailure?: (nombre: string, causa: unknown) => void,
   ) {
     this.#client = client ?? (new Dockerode({
       ...(config.DOCKER_SOCKET ? { socketPath: config.DOCKER_SOCKET } : {}),
@@ -99,7 +129,7 @@ export class DockerAgentRuntime implements AgentRuntime {
 
     try {
       container = await this.#crearContenedor(name, password, input);
-      await this.#dockerCall((abortSignal) => container!.start({ abortSignal }));
+      await this.#dockerLifecycle((abortSignal) => container!.start({ abortSignal }));
 
       const inspect = await this.#dockerCall((abortSignal) => container!.inspect({ abortSignal }));
       const hostPort = inspect.NetworkSettings.Ports?.["4096/tcp"]?.[0]?.HostPort;
@@ -111,40 +141,62 @@ export class DockerAgentRuntime implements AgentRuntime {
       const abortarRun = () => runController.abort();
       input.signal?.addEventListener("abort", abortarRun, { once: true });
 
+      // Propio y no global: subir los timeouts de todo el proceso afectaria
+      // tambien a las llamadas a GitHub, que si deben fallar rapido.
+      const transporte = await crearDispatcherLargo(timeoutDeTransporte(this.config.RUN_TIMEOUT_MS));
+
       const authenticatedFetch: typeof fetch = (url, init = {}) => {
         const headers = new Headers(init.headers);
         headers.set("Authorization", authorization);
         const signals = [runController.signal];
         if (init.signal) signals.push(init.signal);
-        return this.hostFetch(url, { ...init, headers, signal: AbortSignal.any(signals) });
+        // `dispatcher` es una extension de undici que el tipo estandar de
+        // RequestInit no declara, pero que el fetch de Node si respeta.
+        return this.hostFetch(url, {
+          ...init,
+          headers,
+          signal: AbortSignal.any(signals),
+          ...(transporte ? { dispatcher: transporte.dispatcher } : {}),
+        } as unknown as RequestInit);
       };
 
       try {
         await this.#esperarOpencode(baseUrl, authenticatedFetch, container!);
-        result = await withDeadline(
+        const sesion = await withDeadline(
           this.#dirigirSesion(baseUrl, authenticatedFetch, container!, input),
           this.config.RUN_TIMEOUT_MS,
           new AppError("RUN_TIMEOUT", "La auditoria excedio el tiempo maximo.", 504),
           abortarRun,
         );
+        // Ya fuera del deadline del run y con su propio limite: el informe vale
+        // sin diff, pero no al reves.
+        result = { ...sesion, diff: await this.#capturarDiff(container!) };
       } finally {
         input.signal?.removeEventListener("abort", abortarRun);
+        // Cierra los sockets del run: sin esto quedarian vivos hasta el
+        // keepAlive, reteniendo conexiones a un contenedor que ya no existe.
+        await transporte?.close().catch(() => {});
       }
     } catch (error) {
       operationError = await this.#enriquecerError(error, container);
     }
 
-    // El contenedor se borra siempre. Si falla el borrado, eso pisa el error
-    // original: un contenedor vivo con el repo montado es peor que un run fallido.
+    // El contenedor se borra siempre, pero un borrado lento NO puede destruir
+    // una auditoria que ya termino: se reintenta y, si aun asi falla, se deja
+    // anotado para la limpieza de huerfanos en vez de perder media hora de run.
     if (container) {
       try {
-        await this.#dockerCall((abortSignal) => container!.remove({ force: true, v: true, abortSignal }));
-      } catch {
-        throw new AppError(
-          "AGENT_CONTAINER_CLEANUP_FAILED",
-          "No se pudo eliminar el contenedor del agente.",
-          500,
+        await this.#dockerLifecycle((abortSignal) =>
+          container!.remove({ force: true, v: true, abortSignal }),
         );
+      } catch (cause) {
+        await this.#borrarPorNombre(name);
+        this.#huerfanos.push(name);
+        if (operationError === undefined) {
+          // Habia resultado: se conserva. El volumen lo libera el workspace, y
+          // si tampoco puede, la limpieza del proximo arranque lo resuelve.
+          this.onCleanupFailure?.(name, cause);
+        }
       }
     }
 
@@ -165,7 +217,7 @@ export class DockerAgentRuntime implements AgentRuntime {
     });
 
     try {
-      return await this.#dockerCall((abortSignal) => this.#client.createContainer({
+      return await this.#dockerLifecycle((abortSignal) => this.#client.createContainer({
         name,
         Image: this.config.AGENT_IMAGE,
         Cmd: ["bun", "run", "/opt/runner/index.ts"],
@@ -230,8 +282,15 @@ export class DockerAgentRuntime implements AgentRuntime {
         // Todavia arrancando.
       }
 
-      const estado = await this.#dockerCall((abortSignal) => container.inspect({ abortSignal }));
-      if (!estado.State.Running) {
+      // Un inspect lento con el daemon ocupado arrancando el contenedor no es
+      // motivo para matar el run: se reintenta en la proxima vuelta del bucle.
+      let estado: Dockerode.ContainerInspectInfo | undefined;
+      try {
+        estado = await this.#dockerCall((abortSignal) => container.inspect({ abortSignal }));
+      } catch {
+        estado = undefined;
+      }
+      if (estado && !estado.State.Running) {
         throw new AppError(
           estado.State.OOMKilled ? "CONTAINER_OOM" : "CONTAINER_START_TIMEOUT",
           estado.State.OOMKilled
@@ -260,9 +319,19 @@ export class DockerAgentRuntime implements AgentRuntime {
     // por `Env`, asi que no queda en `docker inspect` ni en /proc.
     try {
       await client.auth.set({ path: { id: input.providerId }, body: input.credential as never });
-    } catch {
+    } catch (cause) {
       // Sin encadenar `cause`: el error del SDK puede retener el body enviado.
-      throw new AppError("PROVIDER_AUTH_FAILED", "El proveedor rechazo la credencial.", 422);
+      // Y solo se culpa a la credencial si opencode respondio que es invalida:
+      // un ECONNRESET mandaba al usuario a reconectar una credencial sana.
+      const estado = estadoHttpDe(cause);
+      if (estado === 401 || estado === 403 || estado === 422) {
+        throw new AppError("PROVIDER_AUTH_FAILED", "El proveedor rechazo la credencial.", 422);
+      }
+      throw new AppError(
+        "AGENT_SESSION_FAILED",
+        `No se pudo entregar la credencial a opencode: ${mensajeDe(cause)}`,
+        502,
+      );
     }
 
     let session: { id?: string } | undefined;
@@ -310,7 +379,9 @@ export class DockerAgentRuntime implements AgentRuntime {
       structured,
       sessionId: session.id,
       containerId: container.id,
-      diff: await this.#capturarDiff(container),
+      // El diff se captura despues, fuera del reloj del run: no vale la pena
+      // arriesgar una auditoria terminada por un `exec` lento.
+      diff: "",
       ...leerConsumo(info),
     };
   }
@@ -321,21 +392,39 @@ export class DockerAgentRuntime implements AgentRuntime {
    */
   async #capturarDiff(container: AgentContainer): Promise<string> {
     try {
-      const exec = await container.exec({
-        Cmd: ["git", "-C", "/work/repo", "diff", "--", ".", ":(exclude).opencode"],
-        AttachStdout: true,
-        AttachStderr: true,
-      });
-      const stream = await exec.start({ hijackedStream: true });
-      const trozos: Buffer[] = [];
-      for await (const trozo of stream) trozos.push(Buffer.from(trozo as Buffer));
-      const { ExitCode } = await exec.inspect();
-      if (ExitCode !== 0) return "";
-      return demultiplexDockerStream(Buffer.concat(trozos));
+      return await withDeadline(
+        this.#leerDiff(container),
+        this.config.DOCKER_LIFECYCLE_TIMEOUT_MS,
+        new AppError("DIFF_TIMEOUT", "El diff tardo demasiado.", 504),
+      );
     } catch {
       // El informe vale sin diff; no se pierde un run de 20 minutos por esto.
       return "";
     }
+  }
+
+  async #leerDiff(container: AgentContainer): Promise<string> {
+    const exec = await container.exec({
+      // `HEAD` cubre tambien lo que el agente haya dejado stageado o commiteado:
+      // tiene `bash: allow`, asi que un `git add` propio no debe ocultar el diff.
+      Cmd: ["git", "-C", "/work/repo", "diff", "HEAD", "--", ".", ":(exclude).opencode"],
+      AttachStdout: true,
+      AttachStderr: true,
+    });
+    const stream = await exec.start({ stdin: false });
+    const trozos: Buffer[] = [];
+    let total = 0;
+    for await (const trozo of stream) {
+      const buffer = Buffer.from(trozo as Buffer);
+      total += buffer.length;
+      // Tope duro: un diff gigante no puede hacer crecer la memoria del proceso
+      // de la API sin limite.
+      if (total > MAX_DIFF_BYTES) break;
+      trozos.push(buffer);
+    }
+    const { ExitCode } = await exec.inspect();
+    if (ExitCode !== 0 && ExitCode !== null) return "";
+    return demultiplexDockerStream(Buffer.concat(trozos));
   }
 
   /**
@@ -390,11 +479,24 @@ export class DockerAgentRuntime implements AgentRuntime {
     }
   }
 
+  /** Consultas baratas: inspect, logs. */
   #dockerCall<T>(operation: (abortSignal: AbortSignal) => Promise<T>): Promise<T> {
+    return this.#conDeadline(operation, this.config.DOCKER_API_TIMEOUT_MS);
+  }
+
+  /** Crear, arrancar y borrar: mucho mas lento que una consulta. */
+  #dockerLifecycle<T>(operation: (abortSignal: AbortSignal) => Promise<T>): Promise<T> {
+    return this.#conDeadline(operation, this.config.DOCKER_LIFECYCLE_TIMEOUT_MS);
+  }
+
+  #conDeadline<T>(
+    operation: (abortSignal: AbortSignal) => Promise<T>,
+    timeoutMs: number,
+  ): Promise<T> {
     const controller = new AbortController();
     return withDeadline(
       operation(controller.signal),
-      this.config.DOCKER_API_TIMEOUT_MS,
+      timeoutMs,
       new AppError("DOCKER_API_TIMEOUT", "Docker no respondio a tiempo.", 503),
       () => controller.abort(),
     );
@@ -404,7 +506,7 @@ export class DockerAgentRuntime implements AgentRuntime {
     for (const espera of [0, 100, 500, 1_000]) {
       if (espera > 0) await delay(espera);
       try {
-        await this.#dockerCall((abortSignal) =>
+        await this.#dockerLifecycle((abortSignal) =>
           this.#client.getContainer(name).remove({ force: true, v: true, abortSignal }),
         );
         return;
@@ -449,6 +551,15 @@ function errorDelProveedor(error: unknown): AppError {
     return new AppError("PROVIDER_AUTH_FAILED", "El proveedor rechazo la credencial.", 422);
   }
   return new AppError("AGENT_FAILED", "El agente no pudo completar la auditoria.", 502);
+}
+
+function estadoHttpDe(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const candidato = error as { status?: unknown; statusCode?: unknown; response?: { status?: unknown } };
+  for (const valor of [candidato.status, candidato.statusCode, candidato.response?.status]) {
+    if (typeof valor === "number") return valor;
+  }
+  return undefined;
 }
 
 function mensajeDe(error: unknown): string {

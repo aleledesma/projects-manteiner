@@ -62,7 +62,15 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
     database,
     credentialCrypto,
     (credential) => openAIOAuth.refresh(credential),
-    config.RUN_TIMEOUT_MS + config.REFRESH_MARGIN_MS,
+    // El token tiene que sobrevivir TODO el run, no solo la parte del agente:
+    // antes vienen el clon (CLONE_TIMEOUT_MS) y el arranque del contenedor
+    // (CONTAINER_START_TIMEOUT_MS). Sin sumarlos, el peor caso pedia 35 min de
+    // vida util para un run que puede durar 36,5 y el token vencia sobre el
+    // final, con el agente ya trabajando y sin forma de renovarlo.
+    config.RUN_TIMEOUT_MS +
+      config.CLONE_TIMEOUT_MS +
+      config.CONTAINER_START_TIMEOUT_MS +
+      config.REFRESH_MARGIN_MS,
     dependencies.now,
   );
   const providerRuntime = dependencies.providerRuntime ?? new DockerOpencodeRuntime(config);

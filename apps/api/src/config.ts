@@ -51,7 +51,13 @@ const envSchema = z.object({
   DATABASE_PATH: z.string().default("./data/manteiner.db"),
   ARTIFACTS_DIR: z.string().default("./data/artifacts"),
   DOCKER_SOCKET: z.string().min(1, "no puede estar vacio").optional(),
+  // Consultas baratas: ping, inspect, list.
   DOCKER_API_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(3_000),
+  // Crear, arrancar y borrar contenedores con volumenes montados. En un daemon
+  // ocupado un `remove --force -v` tarda segundos; con el timeout de las
+  // consultas baratas, un borrado lento convertia una auditoria exitosa en un
+  // error de limpieza.
+  DOCKER_LIFECYCLE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(60_000),
   GIT_IMAGE: z.string().trim().min(1, "no puede estar vacio").default("manteiner-git:0.1.0"),
   MAX_REPO_SIZE_KB: z.coerce.number().int().positive().default(2_000_000),
   CLONE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(30 * 60_000).default(5 * 60_000),

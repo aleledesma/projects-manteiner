@@ -58,6 +58,8 @@ interface PreferenceRow {
 export class RunOrchestratorService {
   /** Runs vivos en este proceso, para poder esperarlos al apagar. */
   readonly #enCurso = new Map<string, Promise<RunRow>>();
+  /** `started_at` de cada run vivo, para calcular la duracion al fallar. */
+  readonly #inicio = new Map<string, number>();
 
   constructor(
     private readonly database: DatabaseConnection,
@@ -85,10 +87,19 @@ export class RunOrchestratorService {
 
     const runId = randomUUID();
     this.#insertarRun(runId, input, repository, preferencia);
+    this.#inicio.set(runId, this.now());
 
-    const finished = this.#ejecutar(runId, input, repository, preferencia, credential);
+    // `#ejecutar` no deberia rechazar, pero si su propio catch falla (por
+    // ejemplo un SQLITE_BUSY al marcar el run) la promesa rechaza. Sin este
+    // handler seria un unhandledRejection, que en Node tumba el proceso.
+    const finished = this.#ejecutar(runId, input, repository, preferencia, credential)
+      .catch((error: unknown) => {
+        this.logger.error({ runId, err: error }, "el run no pudo registrar su propio fallo");
+        return { id: runId, status: "failed", errorCode: "INTERNAL_ERROR" } satisfies RunRow;
+      })
+      .finally(() => this.#enCurso.delete(runId));
+
     this.#enCurso.set(runId, finished);
-    void finished.finally(() => this.#enCurso.delete(runId));
     return { id: runId, finished };
   }
 
@@ -130,6 +141,7 @@ export class RunOrchestratorService {
 
       const { report, warnings } = this.#validar(salida.structured);
       this.#persistirResultado(runId, report, warnings, salida);
+      this.#inicio.delete(runId);
       return { id: runId, status: "succeeded", errorCode: null };
     } catch (error) {
       const { code, message } = describirFallo(error);
@@ -151,7 +163,11 @@ export class RunOrchestratorService {
         error_message: message,
         error_detail: detalleParaElUsuario(error),
         finished_at: this.now(),
+        // El camino de exito lo calcula en SQL; el de fallo tambien lo necesita
+        // o la UI muestra "sin duracion" en todos los runs que fallaron.
+        duration_ms: this.now() - (this.#inicio.get(runId) ?? this.now()),
       });
+      this.#inicio.delete(runId);
       return { id: runId, status: code === "RUN_TIMEOUT" ? "timed_out" : "failed", errorCode: code };
     }
   }
@@ -195,7 +211,14 @@ export class RunOrchestratorService {
     runId: string,
     report: MaintenanceReport,
     warnings: unknown[],
-    salida: { sessionId: string; containerId: string; tokensInput: number | null; tokensOutput: number | null; costUsd: number | null },
+    salida: {
+      sessionId: string;
+      containerId: string;
+      diff: string;
+      tokensInput: number | null;
+      tokensOutput: number | null;
+      costUsd: number | null;
+    },
   ): void {
     const ahora = this.now();
     const escribir = this.database.sqlite.transaction(() => {
@@ -208,7 +231,9 @@ export class RunOrchestratorService {
            WHERE id = ?`,
         )
         .run(
-          JSON.stringify({ report, warnings }),
+          // El diff viaja con el informe: es lo que despues alimenta el visor
+          // de diff y el PR de la Fase 7, y capturarlo sin guardarlo no servia.
+          JSON.stringify({ report, warnings, diff: salida.diff || null }),
           report.summary.health_score,
           report.summary.headline,
           report.findings.length,
