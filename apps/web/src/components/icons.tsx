@@ -102,3 +102,143 @@ export function SignOutIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function CopyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true" {...props}>
+      <rect x="4.4" y="4.4" width="7.2" height="7.2" rx="1.8" />
+      <path d="M9.6 4.4V3.5A1.1 1.1 0 008.5 2.4H3.5a1.1 1.1 0 00-1.1 1.1v5a1.1 1.1 0 001.1 1.1h.9" />
+    </svg>
+  );
+}
+
+export function ExternalIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M8.2 2.6h3.2v3.2M11.4 2.6L6.6 7.4" />
+      <path d="M11 8.4v2.4a1.2 1.2 0 01-1.2 1.2H3.2A1.2 1.2 0 012 10.8V4.2A1.2 1.2 0 013.2 3h2.4" />
+    </svg>
+  );
+}
+
+export function InfoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5.2v3.4M8 10.6v.01" />
+    </svg>
+  );
+}
+
+export function ShieldIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M8 1.9l4.6 1.8v3.6c0 2.8-1.9 5.3-4.6 6.1-2.7-.8-4.6-3.3-4.6-6.1V3.7L8 1.9z" />
+    </svg>
+  );
+}
+
+export function SearchIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <circle cx="7.2" cy="7.2" r="4.4" />
+      <path d="M10.5 10.5l3 3" />
+    </svg>
+  );
+}
+
+export function EyeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M1.6 8s2.4-4 6.4-4 6.4 4 6.4 4-2.4 4-6.4 4-6.4-4-6.4-4z" />
+      <circle cx="8" cy="8" r="1.7" />
+    </svg>
+  );
+}
+
+export function EyeOffIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M6.3 4.3A6.6 6.6 0 018 4.2c4 0 6.4 4 6.4 4a11 11 0 01-2.1 2.5M4.2 5.6A11 11 0 001.6 8.2s2.4 4 6.4 4c1 0 1.9-.2 2.7-.6" />
+      <path d="M2.6 2.6l10.8 10.8" />
+    </svg>
+  );
+}
+
+export function LockIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true" {...props}>
+      <rect x="3.4" y="7" width="9.2" height="6.4" rx="1.8" />
+      <path d="M5.6 7V5.2a2.4 2.4 0 014.8 0V7" />
+    </svg>
+  );
+}
+
+export function ArrowRightIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M3 8h10M9.2 4.2L13 8l-3.8 3.8" />
+    </svg>
+  );
+}

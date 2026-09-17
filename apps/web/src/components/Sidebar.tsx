@@ -10,7 +10,7 @@ import {
   SignOutIcon,
 } from "./icons.tsx"
 
-type NavKey = "repos" | "runs" | "settings"
+export type NavKey = "repos" | "runs" | "settings"
 
 const NAV = [
   { key: "repos", label: "Repositorios", Icon: ReposIcon },
@@ -31,11 +31,14 @@ type User = {
 type Props = {
   user: User
   onSignOut: () => void
+  activa?: NavKey
+  onNavegar?: (key: NavKey) => void
 }
 
-export function Sidebar({ user, onSignOut }: Props) {
-  // Marca el item activo sin navegar: las rutas todavía no existen.
-  const [activa, setActiva] = useState<NavKey>("repos")
+export function Sidebar({ user, onSignOut, activa = "repos", onNavegar }: Props) {
+  // Las vistas sin implementar quedan visibles pero inertes: son informacion
+  // sobre lo que viene, no botones rotos.
+  const disponibles: NavKey[] = ["repos", "settings"]
 
   return (
     <aside className="sticky top-0 hidden h-dvh w-[244px] shrink-0 flex-col border-r border-white/6 bg-[linear-gradient(180deg,#0c0d10_0%,var(--color-canvas)_260px)] md:flex">
@@ -49,16 +52,21 @@ export function Sidebar({ user, onSignOut }: Props) {
       <nav className="flex flex-col gap-0.5 p-3 pt-3.5">
         {NAV.map(({ key, label, Icon }) => {
           const on = key === activa
+          const habilitado = disponibles.includes(key)
           return (
             <button
               key={key}
               type="button"
+              disabled={!habilitado}
+              title={habilitado ? undefined : "Todavia no implementado"}
               aria-current={on ? "page" : undefined}
-              onClick={() => setActiva(key)}
+              onClick={() => onNavegar?.(key)}
               className={`relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-                on
-                  ? "bg-white/5 text-ink before:absolute before:-left-3 before:top-2 before:bottom-2 before:w-0.5 before:rounded-r-sm before:bg-accent before:content-['']"
-                  : "text-ink-muted hover:bg-raised hover:text-ink"
+                !habilitado
+                  ? "cursor-default text-ink-faint opacity-50"
+                  : on
+                    ? "bg-white/5 text-ink before:absolute before:-left-3 before:top-2 before:bottom-2 before:w-0.5 before:rounded-r-sm before:bg-accent before:content-['']"
+                    : "text-ink-muted hover:bg-raised hover:text-ink"
               }`}
             >
               <Icon className="size-[15px] shrink-0 opacity-80" />

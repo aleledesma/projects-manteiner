@@ -65,6 +65,17 @@
       transform: none;
     }
   }
+
+  /* Barra indeterminada: la validación de una credencial levanta un contenedor
+     efímero y no tiene progreso real que informar. */
+  @keyframes indeterminate {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(400%);
+    }
+  }
 }
 
 @layer base {
