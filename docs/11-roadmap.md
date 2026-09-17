@@ -88,7 +88,7 @@ contrato del agente es viable tal como está escrito.
 
 ---
 
-## Fase 3 — GitHub App y repositorios 🟡 EN PROGRESO
+## Fase 3 — GitHub App y repositorios 🟡 FUNCIONAL; I9/I10 DIFERIDOS
 
 - [x] Documentar la configuración manual y los permisos de la GitHub App.
 - [x] Flujo de instalación + callback `/api/github/setup`.
@@ -117,11 +117,16 @@ el repositorio no existe en ningún punto del filesystem del host.
 
 ## Fase 4 — Proveedores de IA
 
-- [ ] Catalog container + caché de `provider-catalog.json`.
+**Próxima fase a implementar.** Empezar por el device flow de OpenAI y la persistencia cifrada:
+esa parte reutiliza el spike existente y no depende todavía de la imagen del agente. El catálogo
+y la validación real de API keys sí necesitan un contenedor con opencode; resolver esa frontera
+después del primer corte, sin adelantar todo el runner de la Fase 5.
+
 - [ ] **Device flow de OpenAI**: iniciar, mostrar código, polling, intercambio PKCE, `accountId`.
-- [ ] Refresco proactivo del token OAuth + marcado de credencial inválida.
-- [ ] `POST /api/providers` para API keys, con validación real contra el proveedor.
 - [ ] Almacenamiento cifrado (`api` y `oauth`) + `GET`/`DELETE`.
+- [ ] Refrescar OAuth solo cerca del vencimiento, persistir antes de usar y marcar inválida si falla.
+- [ ] Catalog container + caché de `provider-catalog.json`.
+- [ ] `POST /api/providers` para API keys, con validación real contra el proveedor.
 - [ ] Selección de modelo (global y por repo), filtrando los que no soporten tool calling.
 - [ ] UI de las pantallas de configuración y onboarding, con la pantalla de "ingresá este código".
 

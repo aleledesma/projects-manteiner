@@ -43,13 +43,47 @@ npm run dev                    # curl http://localhost:3001/api/health
 
 ## Lo que sigue, en orden
 
-### Avanzar a proveedores de IA
+### Próxima sesión: comenzar la Fase 4
 
-- Implementar el catálogo y las credenciales de proveedores de IA de la Fase 4.
-- Después, construir la imagen y el runner del agente de la Fase 5.
+No continuar verificando la Fase 3. El siguiente trabajo es **Proveedores de IA** y debe empezar
+por el flujo de OpenAI con cuenta ChatGPT Plus/Pro, porque ya fue probado en los spikes y no
+depende de tener lista la imagen del agente.
+
+Primer corte recomendado:
+
+1. Releer [04-proveedores-ia-opencode.md](./04-proveedores-ia-opencode.md), especialmente device
+   flow, rotación del refresh token y endpoints de proveedores.
+2. Portar `spikes/src/01-openai-device-flow.ts` y `spikes/src/lib/openai-credential.ts` a un
+   servicio de producción en `apps/api`: inicio, polling, intercambio PKCE, extracción de
+   `accountId` y refresh.
+3. Persistir la credencial OAuth en `provider_credentials` usando el `CredentialCrypto` existente;
+   nunca devolver access/refresh tokens desde la API.
+4. Implementar y probar `POST /api/providers/oauth/openai/start`, su consulta de estado,
+   `GET /api/providers` y `DELETE /api/providers/:id`.
+5. Actualizar `GET /api/me` para que `onboarding.hasProvider` refleje la credencial activa.
+
+Después de ese corte:
+
+- implementar el catálogo y la selección de modelo;
+- implementar credenciales por API key con validación real;
+- completar la UI de configuración/onboarding;
+- recién entonces pasar a la imagen y al runner completo del agente de la Fase 5.
+
+⚠️ El catálogo y la validación real de API keys necesitan un contenedor con opencode. La imagen
+`manteiner-agent` figura en Fase 5; al llegar a ese punto hay que decidir si Fase 4 crea una imagen
+base mínima reutilizable o si se adelanta solo esa tarea, sin construir todavía el runner completo.
 
 I9 (calibración del tamaño) e I10 (comprobación de que el token no aparece en `/proc`) quedan
 diferidos hasta que el flujo de ejecución completo sea funcional; no bloquean el desarrollo actual.
+
+Tampoco implementar ahora webhooks ni la UI definitiva de repositorios: ambas decisiones ya
+quedaron diferidas para priorizar el flujo funcional.
+
+### Últimos commits estables
+
+- `9833444 feat: sync GitHub repositories on demand`
+- `fcfeb52 feat: orchestrate ephemeral repository workspaces`
+- `eecf8a6 feat: add secure repository cloning image`
 
 ### Sincronización elegida
 
