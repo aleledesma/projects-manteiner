@@ -9,15 +9,18 @@ const runParamsSchema = z.object({ id: z.uuid() });
 
 export function runRoutes(app: FastifyInstance): void {
   /**
-   * Corre la auditoria completa y responde cuando termino. Sin streaming
-   * todavia: eso es la Fase 6. El cliente tiene que tolerar una espera larga,
-   * acotada por RUN_TIMEOUT_MS.
+   * Lanza la auditoria y responde 202 con el id. No espera a que termine: un
+   * run puede durar media hora. El cliente sigue el estado con
+   * `GET /api/runs/:id` hasta que la Fase 6 traiga el streaming.
    */
   app.post("/api/repos/:id/runs", async (request, reply) => {
     const userId = await requireUserId(app, request);
     const { id } = repositoryParamsSchema.parse(request.params);
-    const run = await app.runs.start({ userId, repositoryId: id });
-    return reply.status(run.status === "succeeded" ? 201 : 200).send(run);
+    const { id: runId, finished } = await app.runs.start({ userId, repositoryId: id });
+    // El fallo ya quedo registrado en la fila del run; sin este `catch` seria
+    // ademas un unhandledRejection que tumba el proceso.
+    finished.catch((error: unknown) => request.log.error({ err: error, runId }, "run fallido"));
+    return reply.status(202).send({ id: runId, status: "preparing" });
   });
 
   app.get("/api/runs/:id", async (request) => {

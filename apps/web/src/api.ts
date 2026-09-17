@@ -136,6 +136,90 @@ export type GithubInstallation = {
   linkedRepos: number;
 };
 
+export type Severity = "high" | "medium" | "low" | "info";
+
+export type RunStatus =
+  | "preparing" | "cloning" | "running" | "succeeded" | "failed" | "timed_out" | "cancelled";
+
+export type LastRun = {
+  id: string;
+  status: RunStatus;
+  healthScore: number | null;
+  headline: string | null;
+  findingsCount: number;
+  modelId: string;
+  errorCode: string | null;
+  queuedAt: number;
+  finishedAt: number | null;
+  severities: Record<Severity, number>;
+};
+
+export type LinkedRepository = {
+  id: string;
+  githubRepoId: number;
+  owner: string;
+  name: string;
+  fullName: string;
+  defaultBranch: string;
+  private: boolean;
+  primaryLanguage: string | null;
+  htmlUrl: string;
+  linkedAt: number;
+  lastRun: LastRun | null;
+};
+
+/** El informe validado, tal como lo define @manteiner/contracts. */
+export type Report = {
+  schema_version: string;
+  summary: { health_score: number; headline: string; overview: string };
+  stack_detected: { name: string; version?: string | null; category: string; source?: string | null }[];
+  steps: {
+    key: string; title: string; status: "completed" | "skipped" | "failed";
+    description: string; evidence?: string[] | null; skip_reason?: string | null;
+  }[];
+  dependency_updates: {
+    applied: { name: string; from: string; to: string; bump: string; scope?: string | null; changelog_url?: string | null; rationale?: string | null }[];
+    deferred: { name: string; from: string; to: string; reason?: string | null; migration_url?: string | null }[];
+    unmaintained: { name: string; reason?: string | null }[];
+  };
+  findings: {
+    finding_key: string; category: string; severity: Severity;
+    effort?: string | null; confidence: string; title: string;
+    description: string; recommendation: string;
+    locations?: { path: string; line?: number | null }[] | null;
+    references?: { url: string; title?: string | null; kind?: string | null }[] | null;
+  }[];
+  proposed_pull_request: { title: string; body: string } | null;
+  out_of_scope_notes: { area: string; note: string }[];
+  limitations: string[];
+};
+
+export type Run = {
+  id: string;
+  repositoryId: string;
+  repositoryFullName: string;
+  auditType: string;
+  status: RunStatus;
+  providerId: string;
+  modelId: string;
+  agentVersion: string;
+  commitSha: string | null;
+  baseBranch: string | null;
+  healthScore: number | null;
+  findingsCount: number;
+  headline: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  tokensInput: number | null;
+  tokensOutput: number | null;
+  costUsd: number | null;
+  queuedAt: number;
+  startedAt: number | null;
+  finishedAt: number | null;
+  durationMs: number | null;
+  result: { report: Report; warnings: unknown[] } | null;
+};
+
 export type AvailableRepository = {
   githubRepoId: number;
   installationId: number;

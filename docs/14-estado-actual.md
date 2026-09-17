@@ -34,7 +34,7 @@ repositorio. El siguiente trabajo backend es la Fase 5.
 | Fase 4 — proveedores de IA | 🟡 | Backend completo; onboarding (V2) construido, UI de settings diferida |
 | V2 — Onboarding web | ✅ | 3 pasos contra la API real; typecheck y build limpios |
 | V7 — Configuración web | 🟡 | Proveedores, modelo, catálogo, GitHub y cuenta; sin borrado de cuenta |
-| Fase 5 — Contenedor y agente | 🟡 | Backend completo: runner, orquestador, limpieza y validación; UI diferida |
+| Fase 5 — Contenedor y agente | ✅ | Backend + UI: dashboard (V3), informe (V5) e histórico del repo |
 | Fases 5 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
@@ -47,19 +47,23 @@ npm run dev                    # curl http://localhost:3001/api/health
 
 ## Lo que sigue, en orden
 
-### Próxima sesión: UI de repositorios y del run
+### Próxima sesión: Fase 6 — streaming SSE
 
-El backend de la Fase 5 está completo. `POST /api/repos/:id/runs` clona, audita, valida el
-informe contra `packages/contracts` y persiste `runs`, `run_steps` y `run_findings`. Falta la
-parte gráfica, que el usuario dejó explícitamente para después:
+El flujo está completo de punta a punta: se vincula un repositorio, se dispara la auditoría
+desde el dashboard, el agente corre en su contenedor y el informe se lee en la UI.
 
-1. **V3 — dashboard de repositorios**: hoy sigue siendo el placeholder de la Fase 2. Es lo que
-   permite disparar un run desde la UI.
-2. **V5 — informe del run**: leer `GET /api/runs/:id` y mostrar `result.report`.
-3. Recién después, la Fase 6 (streaming SSE) y la 7 (Pull Requests).
+Lo que sigue es reemplazar el polling por streaming:
 
-Lo que **no** hay que rehacer: el runner, el orquestador, la limpieza de huérfanos ni la
-validación del structured output. Están implementados y con tests.
+1. Traductor de eventos opencode → eventos de dominio.
+2. `run_events` + Event Bus con fan-out y `GET /api/runs/:id/events`.
+3. Sustituir el polling de `RepositoriesView` y `RunView` por un `EventSource`.
+4. La vista **V4 — Run en vivo** (diseño `02 Run en vivo.dc.html`) recién tiene sentido acá:
+   hoy no hay de dónde sacar el paso actual ni la herramienta en uso.
+
+Después, Fase 7 (Pull Requests) habilita el visor de diff (V8) y el chip de PR en las tarjetas.
+
+Lo que **no** hay que rehacer: runner, orquestador, limpieza de huérfanos, validación del
+structured output, dashboard, informe e histórico. Están implementados y con tests.
 
 El onboarding (V2) ya está construido: cubre los tres pasos y aparece solo mientras `/api/me`
 reporte algo incompleto. Lo que sigue diferido es la UI de **configuración** (V7) y la de

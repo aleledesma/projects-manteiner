@@ -51,6 +51,9 @@ interface PreferenceRow {
 }
 
 export class RunOrchestratorService {
+  /** Runs vivos en este proceso, para poder esperarlos al apagar. */
+  readonly #enCurso = new Map<string, Promise<RunRow>>();
+
   constructor(
     private readonly database: DatabaseConnection,
     private readonly workspaces: RepositoryWorkspaceService,
@@ -60,19 +63,41 @@ export class RunOrchestratorService {
   ) {}
 
   /**
-   * Crea el run y lo ejecuta hasta el final. Devuelve la fila ya terminada:
-   * el streaming es la Fase 6, asi que por ahora el cliente espera.
+   * Crea el run y lo lanza. Devuelve el id apenas la fila existe, sin esperar a
+   * que termine: una auditoria puede durar media hora y dejar un fetch colgado
+   * todo ese tiempo es fragil. El cliente sigue el estado por `GET /api/runs/:id`
+   * hasta que la Fase 6 traiga el streaming.
+   *
+   * `finished` queda expuesto para los tests y para el apagado ordenado.
    */
-  async start(input: StartRunInput): Promise<RunRow> {
+  async start(input: StartRunInput): Promise<{ id: string; finished: Promise<RunRow> }> {
     const repository = this.#buscarRepositorio(input.userId, input.repositoryId);
     const preferencia = this.#buscarPreferencia(input.userId, input.repositoryId);
-    // Se resuelve antes de crear el run: fallar en `queued` da un mensaje util,
-    // fallar a mitad del clon obliga a interpretar un run muerto.
+    // Se resuelve antes de crear el run: fallar antes de insertar da un mensaje
+    // util, fallar a mitad del clon obliga a interpretar un run muerto.
     const credential = await this.credentials.getUsable(input.userId, preferencia.provider_id);
 
     const runId = randomUUID();
     this.#insertarRun(runId, input, repository, preferencia);
 
+    const finished = this.#ejecutar(runId, input, repository, preferencia, credential);
+    this.#enCurso.set(runId, finished);
+    void finished.finally(() => this.#enCurso.delete(runId));
+    return { id: runId, finished };
+  }
+
+  /** Espera a que terminen los runs en curso, para un apagado ordenado. */
+  async close(): Promise<void> {
+    await Promise.allSettled([...this.#enCurso.values()]);
+  }
+
+  async #ejecutar(
+    runId: string,
+    input: StartRunInput,
+    repository: RepositoryRow,
+    preferencia: PreferenceRow,
+    credential: Awaited<ReturnType<ProviderCredentialService["getUsable"]>>,
+  ): Promise<RunRow> {
     try {
       const salida = await this.workspaces.withClonedRepository(
         {

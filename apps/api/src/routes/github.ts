@@ -226,23 +226,75 @@ export function githubRoutes(app: FastifyInstance): void {
   app.get("/api/repos", async (request) => {
     const userId = await requireUserId(app, request);
     await syncLinkedRepositories(app, userId);
+    // El resumen del ultimo run viaja con el repositorio: el dashboard necesita
+    // uno por tarjeta, y pedirlos de a uno seria N+1 contra la misma tabla.
     return app.database.sqlite
       .prepare(
         `SELECT r.id, r.github_repo_id AS githubRepoId, r.owner, r.name,
                  r.full_name AS fullName, r.default_branch AS defaultBranch, r.private,
                  r.primary_language AS primaryLanguage, r.html_url AS htmlUrl,
-                 r.linked_at AS linkedAt
+                 r.linked_at AS linkedAt,
+                 ultimo.id AS lastRunId, ultimo.status AS lastRunStatus,
+                 ultimo.health_score AS lastRunHealthScore, ultimo.headline AS lastRunHeadline,
+                 ultimo.findings_count AS lastRunFindingsCount, ultimo.model_id AS lastRunModelId,
+                 ultimo.error_code AS lastRunErrorCode, ultimo.queued_at AS lastRunQueuedAt,
+                 ultimo.finished_at AS lastRunFinishedAt,
+                 (SELECT count(*) FROM run_findings f
+                   WHERE f.run_id = ultimo.id AND f.severity = 'high') AS lastRunHigh,
+                 (SELECT count(*) FROM run_findings f
+                   WHERE f.run_id = ultimo.id AND f.severity = 'medium') AS lastRunMedium,
+                 (SELECT count(*) FROM run_findings f
+                   WHERE f.run_id = ultimo.id AND f.severity = 'low') AS lastRunLow,
+                 (SELECT count(*) FROM run_findings f
+                   WHERE f.run_id = ultimo.id AND f.severity = 'info') AS lastRunInfo
           FROM repositories r
           INNER JOIN github_installations gi ON gi.id = r.installation_id
+          LEFT JOIN runs ultimo ON ultimo.id = (
+            SELECT id FROM runs
+            WHERE repository_id = r.id AND user_id = r.user_id
+            ORDER BY queued_at DESC LIMIT 1
+          )
           WHERE r.user_id = ? AND r.unlinked_at IS NULL
             AND gi.suspended_at IS NULL
           ORDER BY r.full_name`,
       )
       .all(userId)
-      .map((row) => ({
-        ...(row as Record<string, unknown>),
-        private: (row as { private: number }).private === 1,
-      }));
+      .map((fila) => {
+        const row = fila as Record<string, unknown>;
+        const lastRunId = row["lastRunId"] as string | null;
+        const conteo = (clave: string) => (lastRunId ? (row[clave] as number) : 0);
+        return {
+          id: row["id"],
+          githubRepoId: row["githubRepoId"],
+          owner: row["owner"],
+          name: row["name"],
+          fullName: row["fullName"],
+          defaultBranch: row["defaultBranch"],
+          private: row["private"] === 1,
+          primaryLanguage: row["primaryLanguage"],
+          htmlUrl: row["htmlUrl"],
+          linkedAt: row["linkedAt"],
+          lastRun: lastRunId
+            ? {
+                id: lastRunId,
+                status: row["lastRunStatus"],
+                healthScore: row["lastRunHealthScore"],
+                headline: row["lastRunHeadline"],
+                findingsCount: row["lastRunFindingsCount"],
+                modelId: row["lastRunModelId"],
+                errorCode: row["lastRunErrorCode"],
+                queuedAt: row["lastRunQueuedAt"],
+                finishedAt: row["lastRunFinishedAt"],
+                severities: {
+                  high: conteo("lastRunHigh"),
+                  medium: conteo("lastRunMedium"),
+                  low: conteo("lastRunLow"),
+                  info: conteo("lastRunInfo"),
+                },
+              }
+            : null,
+        };
+      });
   });
 }
 

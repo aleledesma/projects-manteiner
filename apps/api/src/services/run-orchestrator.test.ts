@@ -118,7 +118,7 @@ describe("RunOrchestratorService", () => {
       () => 5_000,
     );
 
-    const run = await service.start({ userId: "user-1", repositoryId: REPO_ID });
+    const run = await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
     assert.equal(run.status, "succeeded");
     assert.equal(registro.destruido, true);
 
@@ -151,7 +151,7 @@ describe("RunOrchestratorService", () => {
       credentials,
     );
 
-    await service.start({ userId: "user-1", repositoryId: REPO_ID });
+    await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
     assert.equal(capturado.input?.modelId, "modelo-repo");
   });
 
@@ -166,7 +166,7 @@ describe("RunOrchestratorService", () => {
       credentials,
     );
 
-    const run = await service.start({ userId: "user-1", repositoryId: REPO_ID });
+    const run = await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
     assert.equal(run.status, "failed");
     assert.equal(run.errorCode, "SCHEMA_INVALID");
     // El volumen se destruye igual: es la garantia del diseno.
@@ -191,7 +191,7 @@ describe("RunOrchestratorService", () => {
       credentials,
     );
 
-    const run = await service.start({ userId: "user-1", repositoryId: REPO_ID });
+    const run = await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
     assert.equal(run.status, "timed_out");
     const fila = database.sqlite
       .prepare("SELECT status, error_code FROM runs WHERE id = ?").get(run.id) as Record<string, unknown>;

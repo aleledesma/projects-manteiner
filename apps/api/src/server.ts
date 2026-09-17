@@ -146,6 +146,9 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
   app.decorate("runs", runs);
   app.addHook("onClose", async () => {
     openAIOAuth.close();
+    // Los runs vivos terminan antes de cerrar la base: si no, el `finally` que
+    // destruye el volumen escribiria sobre una conexion cerrada.
+    await runs.close();
     await providerCatalog.close();
     database.close();
   });

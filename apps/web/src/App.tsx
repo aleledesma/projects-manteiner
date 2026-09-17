@@ -7,6 +7,8 @@ import { Sidebar, type NavKey } from "./components/Sidebar.tsx"
 import { Spinner } from "./components/icons.tsx"
 import { LoginView } from "./views/LoginView.tsx"
 import { OnboardingView } from "./views/OnboardingView.tsx"
+import { RepositoriesView } from "./views/RepositoriesView.tsx"
+import { RunView } from "./views/RunView.tsx"
 import { SettingsView } from "./views/SettingsView.tsx"
 import { authClient } from "./auth-client.ts"
 import { useMe } from "./useMe.ts"
@@ -56,6 +58,9 @@ function ConSesion({ user }: { user: User }) {
   // tercer paso saltaría al dashboard sin cierre y sin acción siguiente.
   const [enOnboarding, setEnOnboarding] = useState<boolean | null>(null)
   const [vista, setVista] = useState<NavKey>("repos")
+  // El run abierto. Es el unico "detalle" que hay, asi que alcanza con esto
+  // en vez de meter un router para una sola ruta anidada.
+  const [runAbierto, setRunAbierto] = useState<string | null>(null)
   const incompleto =
     state.estado === "listo" &&
     !(state.me.onboarding.hasProvider &&
@@ -101,7 +106,15 @@ function ConSesion({ user }: { user: User }) {
 
   return (
     <div className="flex min-h-dvh">
-      <Sidebar user={user} onSignOut={signOut} activa={vista} onNavegar={setVista} />
+      <Sidebar
+        user={user}
+        onSignOut={signOut}
+        activa={vista}
+        onNavegar={(key) => {
+          setRunAbierto(null)
+          setVista(key)
+        }}
+      />
 
       <div className="min-w-0 flex-1">
         {/* Mientras el sidebar no tenga su drawer de mobile, la marca, la
@@ -115,7 +128,10 @@ function ConSesion({ user }: { user: User }) {
             variant="ghost"
             size="sm"
             className="ml-auto"
-            onClick={() => setVista(vista === "settings" ? "repos" : "settings")}
+            onClick={() => {
+              setRunAbierto(null)
+              setVista(vista === "settings" ? "repos" : "settings")
+            }}
           >
             {vista === "settings" ? "Repositorios" : "Configuración"}
           </Button>
@@ -124,32 +140,15 @@ function ConSesion({ user }: { user: User }) {
           </Button>
         </header>
 
-        {vista === "settings" ? (
-          <main>
+        <main>
+          {vista === "settings" ? (
             <SettingsView me={state.me} recargarMe={recargarMe} onSignOut={signOut} />
-          </main>
-        ) : (
-          <main className="px-6 py-8 sm:px-8">
-            <h1 className="text-2xl font-semibold tracking-[-0.018em]">
-              Repositorios
-            </h1>
-            <p className="mt-1.5 text-[13px] text-ink-muted">
-              Sesión iniciada como <span className="font-mono">{user.email}</span>
-              .
-            </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mt-4 -ml-2.5"
-              onClick={() => {
-                void recargar()
-                setEnOnboarding(true)
-              }}
-            >
-              Volver a la configuración inicial
-            </Button>
-          </main>
-        )}
+          ) : runAbierto ? (
+            <RunView runId={runAbierto} onVolver={() => setRunAbierto(null)} />
+          ) : (
+            <RepositoriesView onVerInforme={setRunAbierto} recargarMe={recargarMe} />
+          )}
+        </main>
       </div>
     </div>
   )

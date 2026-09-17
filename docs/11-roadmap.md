@@ -153,7 +153,9 @@ la imagen base reproducible `manteiner-agent`; el runner y las auditorías sigue
 - [x] 3.5 — `dockerode` contra el named pipe de Docker Desktop en Windows. Cerrada por evidencia: clonado, catálogo, agente y limpieza corren por Dockerode sin configurar `DOCKER_SOCKET`.
 
 **Entregable:** `POST /api/repos/:id/runs` corre el agente de punta a punta y guarda
-`result_json`. Sin streaming ni PR todavía. ✅ La UI queda para después.
+`result_json`. Sin streaming ni PR todavía. ✅ Con el dashboard (V3), el informe (V5) y el
+histórico por repositorio; el run responde 202 y la UI sigue el estado por polling hasta que
+la Fase 6 traiga el SSE.
 
 ---
 
