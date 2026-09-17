@@ -63,15 +63,20 @@ describe("maintenanceReportSchema", () => {
     assert.equal(maintenanceReportSchema.safeParse(report).success, false);
   });
 
-  it("exige las fases en el orden definido", () => {
+  // El orden y el titulo NO son del schema: `z.toJSONSchema()` no puede
+  // representar un refine, asi que el modelo recibe `title` como string libre.
+  // Rechazarlo por eso seria castigarlo por una regla que nunca se le dio; lo
+  // canonico lo restaura `normalizeReport`.
+  it("acepta las fases en otro orden y con otros titulos", () => {
     const report = validReport();
     [report.steps[0], report.steps[1]] = [report.steps[1]!, report.steps[0]!];
-    assert.equal(maintenanceReportSchema.safeParse(report).success, false);
+    report.steps[0]!.title = "Inventario de dependencias";
+    assert.equal(maintenanceReportSchema.safeParse(report).success, true);
   });
 
-  it("exige el titulo literal de cada fase", () => {
+  it("rechaza que falte una fase o que una venga repetida", () => {
     const report = validReport();
-    report.steps[0]!.title = "Titulo inventado";
+    report.steps[1]!.key = report.steps[0]!.key;
     assert.equal(maintenanceReportSchema.safeParse(report).success, false);
   });
 

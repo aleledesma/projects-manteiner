@@ -207,19 +207,19 @@ export const maintenanceReportSchema = z
     audit_type: z.literal("maintenance"),
     summary: summarySchema,
     stack_detected: z.array(stackItemSchema),
+    // Las siete fases, cada una exactamente una vez.
+    //
+    // NO se exige aca ni el orden ni el titulo literal. `z.toJSONSchema()` no
+    // puede representar un `.refine()`, asi que el modelo recibe `title` como
+    // string libre: rechazar el informe entero por un titulo con tilde seria
+    // castigarlo por una regla que nunca se le dio. El orden y los titulos
+    // canonicos los restaura `normalizeReport`, que avisa en `warnings`.
     steps: z
       .array(stepSchema)
       .length(STEP_KEYS.length)
-      .refine(
-        (steps) =>
-          steps.every(
-            (step, index) =>
-              step.key === STEP_KEYS[index] && step.title === STEP_TITLES[step.key],
-          ),
-        {
-          message: "Las fases deben aparecer en el orden definido y con sus titulos literales.",
-        },
-      ),
+      .refine((steps) => new Set(steps.map((step) => step.key)).size === STEP_KEYS.length, {
+        message: "Cada una de las siete fases tiene que aparecer exactamente una vez.",
+      }),
     dependency_updates: dependencyUpdatesSchema,
     findings: z.array(findingSchema),
     proposed_pull_request: proposedPullRequestSchema.nullable().meta({

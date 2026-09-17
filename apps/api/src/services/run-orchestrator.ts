@@ -166,14 +166,25 @@ export class RunOrchestratorService {
   #validar(structured: unknown): { report: MaintenanceReport; warnings: unknown[] } {
     const parsed = maintenanceReportSchema.safeParse(structured);
     if (!parsed.success) {
+      const issues = parsed.error.issues.slice(0, 10).map((issue) => ({
+        path: issue.path.join(".") || "(raiz)",
+        message: issue.message,
+      }));
+      const primera = issues[0];
       throw new AppError(
         "SCHEMA_INVALID",
-        "El informe del agente no cumple el contrato.",
+        // El mensaje lleva la primera incoherencia: "no cumple el contrato" a
+        // secas obliga a abrir el detalle para saber si hay algo que hacer.
+        primera
+          ? `El informe no cumple el contrato — ${primera.path}: ${primera.message}`
+          : "El informe del agente no cumple el contrato.",
         422,
-        parsed.error.issues.slice(0, 10).map((issue) => ({
-          path: issue.path.join("."),
-          message: issue.message,
-        })),
+        {
+          issues,
+          // El informe crudo, para poder ver que devolvio realmente el modelo.
+          // Es lo unico que queda de una auditoria de varios minutos.
+          recibido: recorte(structured),
+        },
       );
     }
     const normalized = normalizeReport(parsed.data);
@@ -331,6 +342,15 @@ export class RunOrchestratorService {
   }
 }
 
+/** Recorta el informe crudo para que quepa en `error_detail` sin llenar la base. */
+function recorte(valor: unknown): string {
+  try {
+    return JSON.stringify(valor).slice(0, 20_000);
+  } catch {
+    return String(valor).slice(0, 2_000);
+  }
+}
+
 function describirFallo(error: unknown): { code: string; message: string } {
   if (error instanceof AppError) return { code: error.code, message: error.message };
   // El mensaje real, no uno generico: es la auditoria del propio usuario y sin
@@ -345,7 +365,7 @@ function describirFallo(error: unknown): { code: string; message: string } {
  */
 function detalleParaElUsuario(error: unknown): string | null {
   if (error instanceof AppError && error.details !== undefined) {
-    return JSON.stringify(error.details).slice(0, 8_000);
+    return JSON.stringify(error.details).slice(0, 32_000);
   }
   return null;
 }

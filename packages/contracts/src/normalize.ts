@@ -13,7 +13,7 @@
  * hacen en el orquestador, que es quien tiene acceso al repositorio. Fase 5.
  */
 
-import type { MaintenanceReport } from "./maintenance-report.ts";
+import { STEP_KEYS, STEP_TITLES, type MaintenanceReport } from "./maintenance-report.ts";
 
 export interface Warning {
   code: string;
@@ -29,6 +29,7 @@ export function normalizeReport(input: MaintenanceReport): NormalizeResult {
   const warnings: Warning[] = [];
   const report: MaintenanceReport = structuredClone(input);
 
+  canonicalizeSteps(report, warnings);
   dedupeFindingKeys(report, warnings);
   dropInsecureReferences(report, warnings);
   dropInsecureDependencyUrls(report, warnings);
@@ -37,6 +38,49 @@ export function normalizeReport(input: MaintenanceReport): NormalizeResult {
   checkDiffCoherence(report, warnings);
 
   return { report, warnings };
+}
+
+/**
+ * Ordena las fases y restaura sus titulos canonicos.
+ *
+ * El schema solo exige que esten las siete, una vez cada una: el orden y el
+ * titulo literal no son representables en JSON Schema, asi que el modelo nunca
+ * los recibe y no tiene sentido rechazarle el informe por eso. Pero el
+ * historico si los necesita fijos, porque comparar dos auditorias se apoya en
+ * que la fase 3 sea siempre la fase 3 y se llame siempre igual.
+ *
+ * Lo tipico que corrige: el modelo escribe "Investigacion" con tilde, o emite
+ * las fases en el orden en que las ejecuto en vez del canonico.
+ */
+function canonicalizeSteps(report: MaintenanceReport, warnings: Warning[]): void {
+  const porClave = new Map(report.steps.map((step) => [step.key, step]));
+
+  const renombradas: string[] = [];
+  const ordenadas = STEP_KEYS.map((clave) => {
+    const step = porClave.get(clave)!;
+    const canonico = STEP_TITLES[clave];
+    if (step.title !== canonico) {
+      renombradas.push(`${clave}: "${step.title}"`);
+      return { ...step, title: canonico };
+    }
+    return step;
+  });
+
+  const desordenadas = report.steps.some((step, indice) => step.key !== STEP_KEYS[indice]);
+  if (desordenadas) {
+    warnings.push({
+      code: "STEPS_REORDERED",
+      message: "Las fases venian en otro orden y se reordenaron al canonico.",
+    });
+  }
+  if (renombradas.length > 0) {
+    warnings.push({
+      code: "STEP_TITLE_NORMALIZED",
+      message: `Se restauraron los titulos canonicos de ${renombradas.length} fase(s): ${renombradas.join(", ")}.`,
+    });
+  }
+
+  report.steps = ordenadas;
 }
 
 function isHttpsUrl(value: string): boolean {

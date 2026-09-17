@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { validReport } from "./fixtures.ts";
+import { STEP_KEYS, STEP_TITLES } from "./maintenance-report.ts";
 import { normalizeReport } from "./normalize.ts";
 
 function codigos(warnings: { code: string }[]): string[] {
@@ -129,5 +130,32 @@ describe("normalizeReport", () => {
       const { warnings } = normalizeReport(original);
       assert.ok(codigos(warnings).includes("PR_WITHOUT_APPLIED"));
     });
+  });
+});
+
+describe("canonicalizacion de fases", () => {
+  it("reordena las fases y restaura los titulos, sin perder el informe", () => {
+    const report = validReport();
+    [report.steps[0], report.steps[2]] = [report.steps[2]!, report.steps[0]!];
+    // Lo que escribe un modelo que redacta en español correcto.
+    report.steps[0]!.title = "Investigación de dependencias";
+
+    const { report: normalizado, warnings } = normalizeReport(report);
+
+    assert.deepEqual(
+      normalizado.steps.map((step) => step.key),
+      [...STEP_KEYS],
+    );
+    assert.deepEqual(
+      normalizado.steps.map((step) => step.title),
+      STEP_KEYS.map((clave) => STEP_TITLES[clave]),
+    );
+    assert.ok(warnings.some((w) => w.code === "STEPS_REORDERED"));
+    assert.ok(warnings.some((w) => w.code === "STEP_TITLE_NORMALIZED"));
+  });
+
+  it("no avisa nada si ya venian canonicas", () => {
+    const { warnings } = normalizeReport(validReport());
+    assert.equal(warnings.some((w) => w.code.startsWith("STEP")), false);
   });
 });

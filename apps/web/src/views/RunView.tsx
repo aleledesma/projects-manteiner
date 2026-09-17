@@ -204,6 +204,28 @@ function Fallo({ run }: { run: Run }) {
         ) : null}
       </div>
 
+      {detalle?.issues && detalle.issues.length > 0 ? (
+        <ul className="mt-3 flex flex-col gap-1.5 border-t border-white/6 pt-3">
+          {detalle.issues.map((issue, i) => (
+            <li key={i} className="flex flex-wrap gap-x-2 text-[12.5px]/[18px]">
+              <span className="font-mono text-ink-faint">{issue.path}</span>
+              <span className="text-ink-muted">{issue.message}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {detalle?.recibido ? (
+        <details className="mt-3 border-t border-white/6 pt-3">
+          <summary className="cursor-pointer text-[12.5px] text-ink-faint transition-colors hover:text-ink-muted">
+            Lo que devolvió el modelo
+          </summary>
+          <pre className="mt-2.5 max-h-[280px] overflow-auto rounded-[10px] border border-white/6 bg-sunken px-3 py-2.5 font-mono text-[11.5px]/[17px] whitespace-pre-wrap text-ink-muted">
+            {detalle.recibido}
+          </pre>
+        </details>
+      ) : null}
+
       {detalle?.logs && detalle.logs.length > 0 ? (
         <details className="mt-3 border-t border-white/6 pt-3">
           <summary className="cursor-pointer text-[12.5px] text-ink-faint transition-colors hover:text-ink-muted">
@@ -229,15 +251,31 @@ function Fallo({ run }: { run: Run }) {
   );
 }
 
-function parsearDetalle(crudo: string | null): { logs?: string[]; otros?: string } | null {
+type Detalle = {
+  logs?: string[];
+  issues?: { path: string; message: string }[];
+  recibido?: string;
+  otros?: string;
+};
+
+function parsearDetalle(crudo: string | null): Detalle | null {
   if (!crudo) return null;
   try {
-    const valor = JSON.parse(crudo) as Record<string, unknown>;
-    const logs = Array.isArray(valor["logs"]) ? (valor["logs"] as string[]) : undefined;
-    const resto = { ...valor };
-    delete resto["logs"];
-    const otros = Object.keys(resto).length > 0 ? JSON.stringify(resto, null, 2) : undefined;
-    return { logs, otros };
+    const valor = JSON.parse(crudo) as unknown;
+    // Los `details` de un AppError pueden ser un array (las issues sueltas) o
+    // un objeto con claves conocidas: los dos tienen que leerse igual de bien.
+    if (Array.isArray(valor)) return { issues: valor as Detalle["issues"] };
+
+    const objeto = valor as Record<string, unknown>;
+    const resto = { ...objeto };
+    for (const clave of ["logs", "issues", "recibido"]) delete resto[clave];
+
+    return {
+      logs: Array.isArray(objeto["logs"]) ? (objeto["logs"] as string[]) : undefined,
+      issues: Array.isArray(objeto["issues"]) ? (objeto["issues"] as Detalle["issues"]) : undefined,
+      recibido: typeof objeto["recibido"] === "string" ? objeto["recibido"] : undefined,
+      otros: Object.keys(resto).length > 0 ? JSON.stringify(resto, null, 2) : undefined,
+    };
   } catch {
     return { otros: crudo };
   }
