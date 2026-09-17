@@ -96,8 +96,9 @@ contrato del agente es viable tal como está escrito.
 - [x] `GET /api/github/available-repos`, `POST /api/repos`, `GET /api/repos`.
 - [x] Smoke test completo contra una GitHub App real: instalación, listado y vinculación.
 - [x] Configuración y conexión a Docker Desktop con Dockerode; estado visible en `/api/health`.
-- [ ] Tokens restringidos por repo para clonado y publicación.
-- [ ] Imagen `manteiner-git` + `clone.sh`, con el token por stdin y limpieza del remote.
+- [x] Token `contents: read` restringido por repo para clonado, sin caché ni persistencia.
+- [ ] Token restringido por repo para publicación (se implementa junto con los PR en Fase 7).
+- [x] Imagen `manteiner-git` + `clone.sh`, con token por stdin/FIFO y limpieza del remote.
 - [ ] Chequeo de tamaño del repo previo al clon; creación y destrucción del volumen.
 - [ ] Webhooks con verificación de firma (o sincronización on-demand si se pospone).
 

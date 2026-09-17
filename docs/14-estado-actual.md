@@ -1,6 +1,6 @@
 # 14 — Estado actual (handoff)
 
-**Fecha: 2026-09-16.** Punto de traspaso a otro agente. Este documento es el que hay que leer
+**Fecha: 2026-09-17.** Punto de traspaso a otro agente. Este documento es el que hay que leer
 primero para retomar el trabajo.
 
 ---
@@ -8,8 +8,9 @@ primero para retomar el trabajo.
 ## Resumen en una línea
 
 Fases 0, 1 y 2 cerradas. En Fase 3 funcionan y fueron verificados contra GitHub real el callback
-de la GitHub App, el listado de repos autorizados y su vinculación. La conexión base a Docker
-está implementada; todavía no se crean contenedores ni se clonan repositorios.
+de la GitHub App, el listado de repos autorizados y su vinculación mediante la consola del
+navegador; la UI se pospuso. La conexión base a Docker, el token de clon restringido y la imagen
+`manteiner-git` están implementados; todavía no se orquesta el clon desde la API.
 
 ## Qué está hecho y funcionando
 
@@ -18,30 +19,33 @@ está implementada; todavía no se crean contenedores ni se clonan repositorios.
 | Planificación completa (docs 00-13) | ✅ | 5 revisiones registradas |
 | Fase 0 — spikes de verificación | ✅ cerrada | [13](./13-hallazgos-spike.md) |
 | Monorepo npm workspaces | ✅ | `apps/api`, `apps/web`, `packages/contracts`, `spikes` |
-| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | 41 tests |
+| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | 43 tests |
 | `packages/contracts` | ✅ | 50 tests |
 | Contrato base verificado contra opencode real | ✅ | I5 cerrado; hardening posterior cubierto localmente |
 | Base de datos SQLite | ✅ | 15 tablas + 3 migraciones |
 | Cifrado AES-256-GCM | ✅ | IV aleatorio + AAD + 10 tests específicos |
 | Fase 2 — Better Auth + web mínima | ✅ cerrada | Smoke test real completado |
-| Fase 3 — GitHub App y repositorios | 🟡 | Instalación/listado/vinculación verificados contra GitHub real |
+| Fase 3 — GitHub App y repositorios | 🟡 | Backend verificado; UI de repos diferida; clon real verificado |
 | Conexión Dockerode | ✅ | Detección local + `ping`/`version`; `/api/health` expone solo disponibilidad |
+| Token de clon por repositorio | ✅ | `contents: read`, un `repository_id`, sin caché ni persistencia |
+| Imagen `manteiner-git` | ✅ | Build y clon real verificados; corre como UID 10001 |
 | Fases 4 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 
 ```bash
-npm install && npm test        # 91/91
+npm ci && npm test             # 93/93
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
 ## Lo que sigue, en orden
 
-### Continuar Fase 3 — base de Docker y clonado
+### Continuar Fase 3 — orquestar el clonado
 
-- Implementar tokens `contents: read` restringidos por repositorio.
-- Crear la imagen `manteiner-git`, el clon por stdin y el volumen efímero.
+- Crear y destruir el volumen efímero desde Dockerode.
+- Ejecutar `manteiner-git` pasando el token por stdin y capturar `base_sha`/`size_kb`.
+- Consultar el tamaño del repositorio antes del clon y aplicar `MAX_REPO_SIZE_KB`.
 
 ### Decisión abierta que queda
 
@@ -125,6 +129,10 @@ spikes/src/
 apps/web/src/
   App.tsx          Sesión iniciada y logout; usa los componentes visuales existentes.
   auth-client.ts  Cliente React de Better Auth.
+
+docker/git/
+  Dockerfile       Imagen manteiner-git: Alpine + Git, usuario 10001.
+  clone.sh         Clon depth 1; token por stdin/FIFO; elimina origin.
 ```
 
 ### Dos invariantes que no hay que romper
@@ -141,10 +149,11 @@ apps/web/src/
 ## Comandos útiles
 
 ```bash
-npm test                                              # 91 tests
+npm test                                              # 93 tests
 npm run typecheck
 npm run dev                                           # API en :3001
 npm run dev:web                                       # web en :5173
+npm run docker:build:git                              # imagen manteiner-git:0.1.0
 
 npm run print-schema --workspace @manteiner/contracts # el JSON Schema del informe
 npm run contract --workspace manteiner-spikes -- --dry-run   # verifica sin gastar tokens

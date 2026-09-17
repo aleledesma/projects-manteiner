@@ -151,6 +151,21 @@ export class GithubAppService {
     }
   }
 
+  async createCloneToken(installationId: number, repositoryId: number): Promise<string> {
+    const response = await this.request(
+      `${API_BASE}/app/installations/${installationId}/access_tokens`,
+      {
+        method: "POST",
+        headers: { ...this.githubHeaders(this.createAppJwt()), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repository_ids: [repositoryId],
+          permissions: { contents: "read" },
+        }),
+      },
+    );
+    return accessTokenSchema.parse(await response.json()).token;
+  }
+
   createAppJwt(now = Math.floor(Date.now() / 1000)): string {
     const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
     const payload = Buffer.from(

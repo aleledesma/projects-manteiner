@@ -130,7 +130,7 @@ carga del dashboard. Funciona, pero deja estado obsoleto si alguien revoca desde
 ```
 1. Firmar un JWT con la private key de la App (RS256, exp <= 10 min, iss = app_id)
 2. POST /app/installations/<installation_id>/access_tokens
-   body opcional: { repositories: ["mi-repo"], permissions: { contents: "write", pull_requests: "write" } }
+   body opcional: { repository_ids: [123], permissions: { contents: "read" } }
    -> { token, expires_at }   (~1 hora)
 ```
 
@@ -143,24 +143,24 @@ descubrimiento con solo `metadata: read`, porque debe enumerar todos los repos a
 la instalación. Se cachea en memoria por `installation_id` hasta cinco minutos antes de su
 expiración. No permite leer contenido ni escribir repositorios.
 
-🟢 El token se genera al inicio del run, se usa para clonar y para crear el PR, y **no se
-persiste**. Si el run dura más de una hora se regenera antes del push.
-
-🟡 Los futuros tokens de clon y publicación se cachearán por `installation_id + repo` con TTL
-de 50 minutos. Ese trabajo empieza con el bloque de clonado/Docker.
+🟢 El clon usa un token dedicado con `contents: read`, restringido por `repository_ids` a un
+único repositorio. Se genera bajo demanda, no se cachea ni persiste y se descarta después de
+entregarlo al contenedor. La publicación pedirá más adelante otro token fresco con
+`contents: write` y `pull_requests: write`, también limitado al mismo repositorio.
 
 ### Dónde se usa el token
 
-🟢 **El token nunca se usa en el host ni entra al contenedor del agente.** Se entrega por
-**stdin** a dos contenedores auxiliares de vida muy corta —el de clonado y el de publicación—
-que corren nuestra imagen `manteiner-git`: sin Node, sin opencode, sin LLM. Los detalles
+🟢 **El host solo obtiene y transmite el token; nunca lo usa para operar sobre el repositorio,
+y el token nunca entra al contenedor del agente.** Se entrega por **stdin** a dos contenedores
+auxiliares de vida muy corta —el de clonado y el de publicación— que corren nuestra imagen
+`manteiner-git`: sin Node, sin opencode, sin LLM. Los detalles
 mecánicos (por qué stdin y no variables de entorno, `core.hooksPath=/dev/null`, limpieza del
 remote tras clonar) están en [05](./05-ejecucion-en-docker.md).
 
 Lo relevante desde el lado de GitHub:
 
-- Se usa `http.extraHeader` en vez de poner el token en la URL: así no queda en `.git/config`,
-  ni en el reflog, ni en la línea de comandos de ningún proceso.
+- El clon usa `GIT_ASKPASS` y un FIFO efímero: así el token no queda en `.git/config`, en el
+  reflog, en variables de entorno ni en la línea de comandos de ningún proceso.
 - Tras clonar se borra el remote, de modo que cuando el contenedor del agente monta el
   volumen no hay ni URL de origen ni credencial que encontrar.
 - Para publicar se pide un token **nuevo**: el del clon puede haber expirado si el run fue largo.

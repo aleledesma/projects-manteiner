@@ -16,10 +16,10 @@ seguras, devuelve un informe estructurado y genera un PDF, mostrando el progreso
 | 0 — Verificación técnica | ✅ cerrada ([hallazgos](./docs/13-hallazgos-spike.md)) |
 | 1 — Esqueleto y persistencia | ✅ cerrada — API, contratos, SQLite y cifrado listos. |
 | 2 — Autenticación | ✅ cerrada y verificada contra GitHub real. |
-| 3 — GitHub App y repositorios | 🟡 instalación/listado/vinculación listos; conexión Docker implementada. |
+| 3 — GitHub App y repositorios | 🟡 backend de repos listo; token de clon e imagen Git implementados. |
 | 4 a 9 | 🔲 pendientes ([roadmap](./docs/11-roadmap.md)) |
 
-91 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
+93 tests pasando · typecheck limpio · el contrato base del agente fue aceptado por opencode.
 
 ## Requisitos
 
@@ -29,7 +29,7 @@ seguras, devuelve un informe estructurado y genera un PDF, mostrando el progreso
 ## Puesta en marcha
 
 ```bash
-npm install
+npm ci
 
 cp .env.example .env
 # Genera los dos secretos obligatorios:
@@ -66,6 +66,7 @@ web y dirige `/api/*` a Fastify; `PUBLIC_URL` y `WEB_URL` usan esa misma URL pú
 | `npm run dev` | API en modo watch |
 | `npm run dev:web` | React/Vite en modo desarrollo |
 | `npm run build` | Build de los workspaces que lo requieren |
+| `npm run docker:build:git` | Construye `manteiner-git:0.1.0` |
 | `npm test` | Tests de todos los workspaces |
 | `npm run typecheck` | `tsc --noEmit` en todos los workspaces |
 | `npm run print-schema --workspace @manteiner/contracts` | Imprime el JSON Schema del informe |
@@ -79,6 +80,8 @@ apps/
   web/                 React + Vite + cliente de Better Auth
 packages/
   contracts/           Contrato del agente: Zod, JSON Schema y prompts versionados
+docker/
+  git/                 Imagen mínima para clonar y, más adelante, publicar
 docs/                  Planificación y decisiones
 spikes/                Scripts descartables de verificación (Fase 0)
 ```

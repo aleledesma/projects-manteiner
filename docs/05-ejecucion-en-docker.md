@@ -126,8 +126,8 @@ VHDX).
 
 ## Contenedor 1 — clone
 
-Imagen `manteiner-git`: `alpine/git` o `debian-slim` + `git` + `ca-certificates`. Sin Node,
-sin opencode, sin LLM. Chica y auditable.
+Imagen `manteiner-git`: Alpine 3.22 + `git` + `ca-certificates`, ejecutada como UID/GID 10001.
+Sin Node, sin opencode, sin LLM. Chica y auditable.
 
 ### El token entra por stdin, no por env
 
@@ -160,13 +160,28 @@ vez y no queda en ninguna estructura persistente de Docker.
 ```sh
 #!/bin/sh
 set -eu
+
+if [ "${MANTEINER_GIT_ASKPASS:-}" = "1" ]; then
+  case "${1:-}" in
+    *Username*) printf '%s\n' "x-access-token" ;;
+    *Password*) cat "${MANTEINER_TOKEN_PIPE:?}" ;;
+  esac
+  exit 0
+fi
+
 OWNER="$1"; REPO="$2"; BRANCH="$3"
 read -r TOKEN                      # del stdin, una sola vez
 
-AUTH=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+# El script entra en modo askpass cuando Git pide usuario o password. El token
+# viaja por un FIFO con permisos 0600, no por argumentos ni por el entorno.
+TOKEN_PIPE="/tmp/manteiner-token-$$"
+mkfifo "$TOKEN_PIPE"
+(printf '%s\n' "$TOKEN" > "$TOKEN_PIPE") &
+unset TOKEN
 
-git -c http.extraHeader="Authorization: Basic ${AUTH}" \
-    -c core.hooksPath=/dev/null \
+MANTEINER_GIT_ASKPASS=1 MANTEINER_TOKEN_PIPE="$TOKEN_PIPE" \
+  GIT_ASKPASS="$0" GIT_TERMINAL_PROMPT=0 \
+  git -c core.hooksPath=/dev/null \
     clone --depth 1 --single-branch --branch "$BRANCH" \
     "https://github.com/${OWNER}/${REPO}.git" /work/repo
 
@@ -181,6 +196,8 @@ du -sk /work/repo | cut -f1        > /work/size_kb
 - `--depth 1 --single-branch`: solo lo necesario. Menos espacio, menos tiempo.
 - `core.hooksPath=/dev/null`: git no ejecuta hooks del repositorio clonado. Barato y cierra
   un vector de ejecución de código.
+- `GIT_ASKPASS` entrega el token desde el FIFO solo si Git lo solicita. No aparece en
+  `docker inspect`, `/proc/<pid>/environ` ni `/proc/<pid>/cmdline`.
 - Se borra el remote: cuando el contenedor 2 monte el volumen, no hay ni URL ni credencial.
 - `base_sha` queda registrado para el run. **No hace falta un commit artificial**: el clon ya
   tiene un HEAD limpio, así que el `git diff` posterior muestra exactamente lo que tocó el agente.
