@@ -478,6 +478,49 @@ describe("servidor", () => {
         ["github/project", "octocat/hello-world"],
       );
 
+      // El stream de un run ya terminado: replay completo y cierre inmediato.
+      // Es lo unico que `inject` puede observar, porque espera a que el
+      // response termine; un run vivo mantendria la conexion abierta.
+      app.database.sqlite.prepare(
+        `INSERT INTO runs
+          (id, user_id, repository_id, audit_type, status, provider_id, model_id,
+           agent_version, schema_version, queued_at)
+         VALUES ('22222222-2222-4222-8222-222222222222', ?, ?, 'maintenance', 'succeeded',
+                 'openai', 'm', 'maintenance@1', '1.0.0', 1)`,
+      ).run(
+        (app.database.sqlite.prepare("SELECT id FROM users LIMIT 1").get() as { id: string }).id,
+        repositoryId.id,
+      );
+      app.runEvents.publish("22222222-2222-4222-8222-222222222222", {
+        type: "steps.updated",
+        payload: { steps: [{ seq: 0, key: "repo-discovery", title: "Reconocimiento", status: "completed" }] },
+      });
+      app.runEvents.publish("22222222-2222-4222-8222-222222222222", {
+        type: "run.completed",
+        payload: { healthScore: 72, findingsCount: 3, headline: "ok" },
+      });
+
+      const stream = await app.inject({
+        method: "GET",
+        url: "/api/runs/22222222-2222-4222-8222-222222222222/events",
+        headers: { cookie: cookieHeader(cookies), accept: "text/event-stream" },
+      });
+      assert.equal(stream.statusCode, 200);
+      assert.match(stream.headers["content-type"] as string, /text\/event-stream/);
+      // Sin esto un nginx delante bufferea el stream entero y no llega nada.
+      assert.equal(stream.headers["x-accel-buffering"], "no");
+      assert.match(stream.body, /event: steps\.updated/);
+      assert.match(stream.body, /event: run\.completed/);
+      assert.match(stream.body, /"healthScore":72/);
+      // Cada evento lleva su id: es el cursor que el navegador manda al reconectar.
+      assert.match(stream.body, /^id: \d+$/m);
+
+      const ajeno = await app.inject({
+        method: "GET",
+        url: "/api/runs/22222222-2222-4222-8222-222222222222/events",
+      });
+      assert.equal(ajeno.statusCode, 401);
+
       const installations = await app.inject({
         method: "GET",
         url: "/api/github/installations",

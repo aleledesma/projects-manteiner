@@ -159,16 +159,17 @@ la Fase 6 traiga el SSE.
 
 ---
 
-## Fase 6 — Streaming SSE
+## Fase 6 — Streaming SSE 🟡 FUNCIONAL
 
-- [ ] Traductor de eventos opencode → eventos de dominio (con el catálogo real de la Fase 0).
-- [ ] `run_events` + Event Bus con fan-out.
-- [ ] `GET /api/runs/:id/events` con `Last-Event-ID`, replay y heartbeat.
-- [ ] Throttling y topes de volumen.
-- [ ] Reconciliación de `run_steps` con el array `steps` del JSON final.
-- [ ] UI de la vista en vivo.
+- [x] Traductor de eventos opencode → eventos de dominio, con `default` tolerante a tipos no declarados.
+- [x] `run_events` + Event Bus con fan-out, que persiste antes de emitir.
+- [x] `GET /api/runs/:id/events` con `Last-Event-ID`, replay, heartbeat y cierre al terminar.
+- [x] Throttling de texto (500 ms / 400 caracteres), sin `reasoning`, payload de 8 KB y tope de 5.000 eventos por run.
+- [x] Reconciliación de `run_steps` con el array `steps` del JSON final: los todos mueven la vista, el informe define el histórico.
+- [x] UI de la vista en vivo (V4) y progreso real en las tarjetas del dashboard.
 
-**Entregable:** se ve el progreso del agente en tiempo real y sobrevive a un F5.
+**Entregable:** se ve el progreso del agente en tiempo real y sobrevive a un F5. ✅ Falta
+verificarlo contra un run real.
 
 ---
 

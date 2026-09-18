@@ -11,8 +11,6 @@ import { RepoCard } from "../repos/RepoCard.tsx";
 import { COLOR_SEVERIDAD } from "../salud.ts";
 
 const EN_CURSO = new Set(["preparing", "cloning", "running"]);
-/** Mientras haya un run vivo se refresca la lista: sin SSE, esto es lo que hay. */
-const POLL_MS = 4_000;
 
 type Filtro = "todos" | "en-curso" | "altos" | "nunca";
 
@@ -56,16 +54,6 @@ export function RepositoriesView({ onVerInforme, recargarMe }: Props) {
       montado.current = false;
     };
   }, [cargar]);
-
-  const hayActivos =
-    (repos ?? []).some((repo) => repo.lastRun && EN_CURSO.has(repo.lastRun.status)) ||
-    lanzando.size > 0;
-
-  useEffect(() => {
-    if (!hayActivos) return;
-    const id = setInterval(() => void cargar(), POLL_MS);
-    return () => clearInterval(id);
-  }, [hayActivos, cargar]);
 
   async function auditar(repoId: string) {
     setLanzando((previos) => new Set(previos).add(repoId));
@@ -158,6 +146,7 @@ export function RepositoriesView({ onVerInforme, recargarMe }: Props) {
                 onAuditar={() => void auditar(repo.id)}
                 onVerInforme={onVerInforme}
                 onVerHistorial={() => setHistorial(repo)}
+                onRecargar={() => void cargar()}
               />
             ))}
             {visibles.length === 0 ? (

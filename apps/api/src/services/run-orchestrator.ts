@@ -23,6 +23,7 @@ import { AppError } from "../errors.ts";
 import type { AgentRuntime } from "./agent-runtime.ts";
 import type { ProviderCredentialService } from "./provider-credentials.ts";
 import type { RepositoryWorkspaceService } from "./repository-workspace.ts";
+import type { RunEventBus } from "./run-events.ts";
 
 /** Lo minimo que el orquestador necesita del logger de Fastify. */
 export interface RunLogger {
@@ -66,6 +67,7 @@ export class RunOrchestratorService {
     private readonly workspaces: RepositoryWorkspaceService,
     private readonly agent: AgentRuntime,
     private readonly credentials: ProviderCredentialService,
+    private readonly eventos: RunEventBus,
     private readonly now: () => number = Date.now,
     private readonly logger: RunLogger = { error: () => {} },
   ) {}
@@ -88,6 +90,7 @@ export class RunOrchestratorService {
     const runId = randomUUID();
     this.#insertarRun(runId, input, repository, preferencia);
     this.#inicio.set(runId, this.now());
+    this.eventos.publish(runId, { type: "run.status", payload: { status: "preparing", at: this.now() } });
 
     // `#ejecutar` no deberia rechazar, pero si su propio catch falla (por
     // ejemplo un SQLITE_BUSY al marcar el run) la promesa rechaza. Sin este
@@ -124,6 +127,7 @@ export class RunOrchestratorService {
         },
         async (workspace) => {
           this.#marcar(runId, "running", { commit_sha: workspace.baseSha });
+          this.eventos.publish(runId, { type: "run.status", payload: { status: "running", at: this.now() } });
           return this.agent.run({
             runId,
             userId: input.userId,
@@ -135,6 +139,7 @@ export class RunOrchestratorService {
             providerId: preferencia.provider_id,
             modelId: preferencia.model_id,
             credential,
+            onEvent: (evento) => this.eventos.publish(runId, evento),
           });
         },
       );
@@ -142,6 +147,15 @@ export class RunOrchestratorService {
       const { report, warnings } = this.#validar(salida.structured);
       this.#persistirResultado(runId, report, warnings, salida);
       this.#inicio.delete(runId);
+      this.eventos.publish(runId, {
+        type: "run.completed",
+        payload: {
+          healthScore: report.summary.health_score,
+          findingsCount: report.findings.length,
+          headline: report.summary.headline,
+        },
+      });
+      this.eventos.forget(runId);
       return { id: runId, status: "succeeded", errorCode: null };
     } catch (error) {
       const { code, message } = describirFallo(error);
@@ -168,6 +182,8 @@ export class RunOrchestratorService {
         duration_ms: this.now() - (this.#inicio.get(runId) ?? this.now()),
       });
       this.#inicio.delete(runId);
+      this.eventos.publish(runId, { type: "run.failed", payload: { code, message } });
+      this.eventos.forget(runId);
       return { id: runId, status: code === "RUN_TIMEOUT" ? "timed_out" : "failed", errorCode: code };
     }
   }

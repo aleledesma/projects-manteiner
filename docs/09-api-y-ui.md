@@ -88,6 +88,7 @@ las operaciones sobre un repo individual llegan con las fases que consumen esos 
 | `DELETE` | `/api/providers/:id` | Elimina credencial. |
 | `POST` | `/api/repos/:id/runs` | Lanza la auditoria. Responde 202 con el id; el estado se sigue por `GET /api/runs/:id`. |
 | `GET` | `/api/runs/:id` | Run con su informe validado. |
+| `GET` | `/api/runs/:id/events` | SSE del progreso. Autoriza por cookie; soporta `Last-Event-ID`. |
 | `GET` | `/api/repos/:id/runs` | Historico del repositorio, ultimos 50. |
 | `GET` | `/api/preferences/model` | Modelo por defecto del usuario, o `null` si no eligio. |
 | `PUT` | `/api/preferences/model` | Modelo por defecto del usuario. |

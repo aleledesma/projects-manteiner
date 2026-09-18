@@ -19,6 +19,8 @@ import Dockerode from "dockerode";
 import type { Config } from "../config.ts";
 import { AppError } from "../errors.ts";
 import type { ProviderCredentialPayload } from "./credential-crypto.ts";
+import { OpencodeTranslator } from "./opencode-translator.ts";
+import type { RunEvent, StepView } from "./run-events.ts";
 import {
   crearDispatcherLargo,
   delay,
@@ -42,6 +44,8 @@ export interface AgentRunInput {
   readonly credential: ProviderCredentialPayload;
   /** Cancelacion del usuario o apagado de la API. */
   readonly signal?: AbortSignal;
+  /** Progreso en vivo. Si falta, el run corre igual pero a ciegas. */
+  readonly onEvent?: (evento: RunEvent) => void;
 }
 
 export interface AgentRunOutput {
@@ -53,6 +57,8 @@ export interface AgentRunOutput {
   readonly tokensInput: number | null;
   readonly tokensOutput: number | null;
   readonly costUsd: number | null;
+  /** Ultima foto de los pasos segun los todos del agente. */
+  readonly steps: StepView[];
 }
 
 interface AgentContainer {
@@ -314,6 +320,11 @@ export class DockerAgentRuntime implements AgentRuntime {
     input: AgentRunInput,
   ): Promise<AgentRunOutput> {
     const client = createOpencodeClient({ baseUrl, fetch: authenticatedFetch });
+    const traductor = new OpencodeTranslator(input.onEvent ?? (() => {}));
+    // La suscripcion se abre antes de la sesion: si se abriera despues se
+    // perderian los primeros eventos, que son justo los que sacan a la UI del
+    // "preparando".
+    const cortarEventos = await this.#consumirEventos(client, traductor, input.signal);
 
     // La credencial entra por HTTP, ya con el servidor arriba (I4). Nunca pasa
     // por `Env`, asi que no queda en `docker inspect` ni en /proc.
@@ -365,6 +376,9 @@ export class DockerAgentRuntime implements AgentRuntime {
       throw new AppError("AGENT_FAILED", `La sesion del agente fallo: ${mensajeDe(cause)}`, 502);
     }
 
+    traductor.flush();
+    cortarEventos();
+
     const info = (unwrap(respuesta) as { info?: Record<string, unknown> } | undefined)?.info;
     if (info?.["error"]) throw errorDelProveedor(info["error"]);
 
@@ -382,8 +396,43 @@ export class DockerAgentRuntime implements AgentRuntime {
       // El diff se captura despues, fuera del reloj del run: no vale la pena
       // arriesgar una auditoria terminada por un `exec` lento.
       diff: "",
+      steps: traductor.pasos,
       ...leerConsumo(info),
     };
+  }
+
+  /**
+   * Consume el stream de eventos de opencode en segundo plano.
+   *
+   * Nunca puede tumbar el run: si la suscripcion falla o se corta, la auditoria
+   * sigue y lo unico que se pierde es el progreso en vivo.
+   */
+  async #consumirEventos(
+    client: ReturnType<typeof createOpencodeClient>,
+    traductor: OpencodeTranslator,
+    signal: AbortSignal | undefined,
+  ): Promise<() => void> {
+    let vivo = true;
+    const cortar = () => {
+      vivo = false;
+    };
+    signal?.addEventListener("abort", cortar, { once: true });
+
+    void (async () => {
+      try {
+        const suscripcion = await client.event.subscribe();
+        const stream = (suscripcion as { stream?: AsyncIterable<unknown> }).stream;
+        if (!stream) return;
+        for await (const evento of stream) {
+          if (!vivo) break;
+          traductor.handle(evento);
+        }
+      } catch {
+        // El progreso en vivo es best-effort; el informe no depende de el.
+      }
+    })();
+
+    return cortar;
   }
 
   /**

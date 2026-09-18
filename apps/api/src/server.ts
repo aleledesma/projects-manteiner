@@ -28,6 +28,7 @@ import { ProviderCatalogService, type OpencodeProviderRuntime } from "./services
 import { ProviderCredentialService } from "./services/provider-credentials.ts";
 import { OrphanCleanupService, type CleanupDockerClient } from "./services/docker-cleanup.ts";
 import { RunOrchestratorService } from "./services/run-orchestrator.ts";
+import { RunEventBus } from "./services/run-events.ts";
 import {
   DockerWorkspaceRuntime,
   RepositoryWorkspaceService,
@@ -176,15 +177,18 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
 
   // Despues de crear `app` para que el orquestador pueda usar su logger: sin
   // eso, un fallo inesperado de un run no dejaba ninguna huella.
+  const runEvents = new RunEventBus(database, dependencies.now);
   const runs = new RunOrchestratorService(
     database,
     repositoryWorkspace,
     agentRuntime,
     providerCredentials,
+    runEvents,
     dependencies.now,
     app.log,
   );
   app.decorate("runs", runs);
+  app.decorate("runEvents", runEvents);
 
   registerErrorHandler(app);
 
@@ -212,5 +216,6 @@ declare module "fastify" {
     docker: DockerService;
     repositoryWorkspace: RepositoryWorkspaceService;
     runs: RunOrchestratorService;
+    runEvents: RunEventBus;
   }
 }

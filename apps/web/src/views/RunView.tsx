@@ -8,10 +8,11 @@ import { HealthRing } from "../components/HealthRing.tsx";
 import { Markdown } from "../components/Markdown.tsx";
 import { ArrowRightIcon, ExternalIcon, InfoIcon, Spinner } from "../components/icons.tsx";
 import { Hallazgo } from "../runs/Hallazgo.tsx";
+import { RunEnVivo } from "../runs/RunEnVivo.tsx";
+import { useRunEvents } from "../runs/useRunEvents.ts";
 import { COLOR_SEVERIDAD, NOMBRE_SEVERIDAD, bandaDeSalud } from "../salud.ts";
 
 const EN_CURSO = new Set(["preparing", "cloning", "running"]);
-const POLL_MS = 3_000;
 
 const PESO_SEVERIDAD: Record<string, number> = { high: 0, medium: 1, low: 2, info: 3 };
 const ORDEN_CATEGORIA: Record<string, string> = {
@@ -39,12 +40,16 @@ export function RunView({ runId, onVolver }: { runId: string; onVolver: () => vo
     void cargar();
   }, [cargar]);
 
-  // Mientras el run vive, se repregunta. Con la Fase 6 esto pasa a ser un SSE.
+  // El estado completo sale del GET; el stream solo aporta el progreso. Por eso
+  // la pantalla nunca queda vacia esperando el primer evento.
+  const activo = run !== null && EN_CURSO.has(run.status);
+  const progreso = useRunEvents(runId, activo);
+
+  // Al terminar, el stream avisa y se relee el run entero: el SSE no transporta
+  // el informe, que puede pesar 100 KB.
   useEffect(() => {
-    if (!run || !EN_CURSO.has(run.status)) return;
-    const id = setInterval(() => void cargar(), POLL_MS);
-    return () => clearInterval(id);
-  }, [run, cargar]);
+    if (progreso.termino) void cargar();
+  }, [progreso.termino, cargar]);
 
   if (error) {
     return (
@@ -76,7 +81,7 @@ export function RunView({ runId, onVolver }: { runId: string; onVolver: () => vo
 
       <Encabezado run={run} report={report} />
 
-      {EN_CURSO.has(run.status) ? <EnCurso /> : null}
+      {activo ? <RunEnVivo run={run} progreso={progreso} /> : null}
       {run.status === "failed" || run.status === "timed_out" ? <Fallo run={run} /> : null}
 
       {report ? (
@@ -174,18 +179,6 @@ function Estado({ run }: { run: Run }) {
     );
   }
   return <Chip>{run.status === "timed_out" ? "Excedió el tiempo" : "Falló"}</Chip>;
-}
-
-function EnCurso() {
-  return (
-    <div className="mt-6 flex items-center gap-3 rounded-xl border border-accent/26 bg-accent/5 px-4 py-3.5">
-      <Spinner className="size-4 shrink-0 text-accent" />
-      <p className="text-[13px] text-accent-text">
-        La auditoría está corriendo. Esta pantalla se actualiza sola; el detalle paso a paso llega
-        con el streaming de la Fase 6.
-      </p>
-    </div>
-  );
 }
 
 /**

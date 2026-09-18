@@ -35,12 +35,13 @@ repositorio. El siguiente trabajo backend es la Fase 5.
 | V2 — Onboarding web | ✅ | 3 pasos contra la API real; typecheck y build limpios |
 | V7 — Configuración web | 🟡 | Proveedores, modelo, catálogo, GitHub y cuenta; sin borrado de cuenta |
 | Fase 5 — Contenedor y agente | ✅ | Backend + UI: dashboard (V3), informe (V5) e histórico del repo |
+| Fase 6 — Streaming SSE | 🟡 | Bus, traductor, endpoint y vista en vivo (V4); sin verificar contra un run real |
 | Fases 5 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 
 ```bash
-npm ci && npm test             # 135/135 (77 api + 8 runner + 50 contracts)
+npm ci && npm test             # 153/153 (93 api + 8 runner + 52 contracts)
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```
@@ -191,7 +192,9 @@ apps/api/src/
   services/agent-runtime.ts    Contenedor 2: monta el volumen, auth.set por HTTP y dirige la sesion.
   services/run-orchestrator.ts Clona, audita, valida contra contracts y persiste el run.
   services/docker-cleanup.ts   Huerfanos al arrancar: runs vivos, contenedores y volumenes.
-  services/docker-helpers.ts   Etiquetas, deadlines y demultiplexado de logs de Docker.
+  services/docker-helpers.ts   Etiquetas, deadlines, demultiplexado y dispatcher largo.
+  services/run-events.ts       Eventos de dominio y bus con fan-out y replay.
+  services/opencode-translator.ts Eventos de opencode -> eventos de dominio, con throttle.
   routes/runs.ts  POST /api/repos/:id/runs + lectura de runs.
   errors.ts       AppError + handler unico. Forma { error: { code, message } }.
   server.ts       buildServer(config) -> NO escucha, para que los tests usen inject().

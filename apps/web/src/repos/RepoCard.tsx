@@ -5,6 +5,7 @@ import { Button } from "../components/Button.tsx";
 import { Chip } from "../components/Chip.tsx";
 import { HealthRing } from "../components/HealthRing.tsx";
 import { ExternalIcon, LockIcon, Spinner } from "../components/icons.tsx";
+import { useRunEvents } from "../runs/useRunEvents.ts";
 import { COLOR_SEVERIDAD, PLURAL_SEVERIDAD } from "../salud.ts";
 import { relativo } from "../tiempo.ts";
 
@@ -29,9 +30,11 @@ type Props = {
   onAuditar: () => void;
   onVerInforme: (runId: string) => void;
   onVerHistorial: () => void;
+  /** El stream avisó que el run terminó: hay que releer la lista. */
+  onRecargar: () => void;
 };
 
-export function RepoCard({ repo, auditando, onAuditar, onVerInforme, onVerHistorial }: Props) {
+export function RepoCard({ repo, auditando, onAuditar, onVerInforme, onVerHistorial, onRecargar }: Props) {
   const run = repo.lastRun;
   const activo = auditando || (run !== null && EN_CURSO.has(run.status));
 
@@ -106,7 +109,12 @@ export function RepoCard({ repo, auditando, onAuditar, onVerInforme, onVerHistor
 
       <div className="px-[15px] py-4">
         {activo ? (
-          <EnCurso desde={run?.queuedAt ?? Date.now()} estado={run?.status ?? "preparing"} />
+          <EnCurso
+            runId={run?.id ?? null}
+            desde={run?.queuedAt ?? Date.now()}
+            estado={run?.status ?? "preparing"}
+            onTermino={onRecargar}
+          />
         ) : run === null ? (
           <Vacio onAuditar={onAuditar} />
         ) : run.status === "succeeded" && run.healthScore !== null ? (
@@ -129,31 +137,71 @@ function BarraIndeterminada() {
   );
 }
 
-/** Cronometro desde que el run se encolo. Sin SSE todavia: esto es lo honesto. */
-function EnCurso({ desde, estado }: { desde: number; estado: string }) {
+/**
+ * Progreso en vivo de la tarjeta. Cada tarjeta activa abre su propio stream:
+ * el bus hace fan-out por run, asi que varias pestanas o varias tarjetas del
+ * mismo run no se pisan.
+ */
+function EnCurso({
+  runId,
+  desde,
+  estado,
+  onTermino,
+}: {
+  runId: string | null;
+  desde: number;
+  estado: string;
+  onTermino: () => void;
+}) {
   const [ahora, setAhora] = useState(() => Date.now());
+  const progreso = useRunEvents(runId, true);
+
   useEffect(() => {
     const id = setInterval(() => setAhora(Date.now()), 1_000);
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (progreso.termino) onTermino();
+  }, [progreso.termino, onTermino]);
+
   const segundos = Math.max(0, Math.floor((ahora - desde) / 1_000));
+  const completados = progreso.steps.filter((paso) => paso.status === "completed").length;
+  const total = progreso.steps.length || 7;
+  const enCurso = progreso.steps.find((paso) => paso.status === "running");
 
   return (
-    <div className="flex items-center gap-3">
-      <Spinner className="size-4 shrink-0 text-accent" />
-      <div className="min-w-0 flex-1">
-        <p className="text-[13.5px] font-medium text-accent-text">
-          {PASO_DE_ESTADO[estado] ?? "Auditando"}
-        </p>
-        <p className="mt-0.5 text-[12.5px] text-ink-faint">
-          El detalle paso a paso llega con el streaming.
-        </p>
+    <div>
+      <div className="flex items-center gap-3">
+        <Spinner className="size-4 shrink-0 text-accent" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13.5px] font-medium text-accent-text">
+            {enCurso?.title ?? PASO_DE_ESTADO[estado] ?? "Auditando"}
+          </p>
+          <p className="mt-0.5 truncate text-[12.5px] text-ink-faint">
+            {progreso.herramienta ? (
+              <span className="font-mono">&gt; {progreso.herramienta.title}</span>
+            ) : progreso.steps.length > 0 ? (
+              `paso ${Math.min(completados + 1, total)} de ${total}`
+            ) : (
+              "Esperando el plan del agente…"
+            )}
+          </p>
+        </div>
+        <span className="shrink-0 font-mono text-[13px] text-ink-muted tabular-nums">
+          {String(Math.floor(segundos / 60)).padStart(2, "0")}:
+          {String(segundos % 60).padStart(2, "0")}
+        </span>
       </div>
-      <span className="shrink-0 font-mono text-[13px] text-ink-muted tabular-nums">
-        {String(Math.floor(segundos / 60)).padStart(2, "0")}:
-        {String(segundos % 60).padStart(2, "0")}
-      </span>
+
+      {progreso.steps.length > 0 ? (
+        <div className="mt-3 h-0.5 overflow-hidden rounded-full bg-white/6">
+          <div
+            className="h-full rounded-full bg-accent transition-[width] duration-500"
+            style={{ width: `${Math.round((completados / total) * 100)}%` }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

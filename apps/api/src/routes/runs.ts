@@ -4,6 +4,10 @@ import { z } from "zod";
 
 import { AppError } from "../errors.ts";
 
+/** El protocolo SSE separa campos con un salto y eventos con dos. */
+const SSE_NL = String.fromCharCode(10);
+const SSE_FIN = SSE_NL + SSE_NL;
+
 const repositoryParamsSchema = z.object({ id: z.uuid() });
 const runParamsSchema = z.object({ id: z.uuid() });
 
@@ -50,6 +54,76 @@ export function runRoutes(app: FastifyInstance): void {
 
     const { resultJson, ...resto } = run;
     return { ...resto, result: resultJson ? JSON.parse(resultJson) : null };
+  });
+
+  /**
+   * Progreso en vivo del run.
+   *
+   * La autorizacion va por cookie porque `EventSource` no deja mandar headers
+   * propios: un `runId` no es un secreto, asi que se exige la misma sesion que
+   * el resto de la API (doc 07).
+   */
+  app.get("/api/runs/:id/events", async (request, reply) => {
+    const userId = await requireUserId(app, request);
+    const { id } = runParamsSchema.parse(request.params);
+
+    const run = app.database.sqlite
+      .prepare("SELECT status FROM runs WHERE id = ? AND user_id = ?")
+      .get(id, userId) as { status: string } | undefined;
+    if (!run) throw AppError.notFound("Run no encontrado.");
+
+    reply.raw.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      // Imprescindible si hay un nginx delante: si no, bufferea el stream entero.
+      "x-accel-buffering": "no",
+    });
+
+    const escribir = (evento: { id: number; type: string; payload: unknown }) => {
+      if (reply.raw.writableEnded) return;
+      const lineas = evento.id > 0 ? `id: ${evento.id}${SSE_NL}` : "";
+      reply.raw.write(`${lineas}event: ${evento.type}${SSE_NL}data: ${JSON.stringify(evento.payload)}${SSE_FIN}`);
+    };
+
+    // Replay primero y suscripcion despues: al reves se perderian los eventos
+    // que lleguen mientras se lee la base.
+    const desde = Number.parseInt(String(request.headers["last-event-id"] ?? "0"), 10);
+    const pendientes = app.runEvents.replay(id, Number.isFinite(desde) ? desde : 0);
+    for (const evento of pendientes) escribir(evento);
+
+    const terminado = (tipo: string) => tipo === "run.completed" || tipo === "run.failed";
+    const yaTermino = ["succeeded", "failed", "timed_out", "cancelled"].includes(run.status);
+
+    if (yaTermino && pendientes.some((evento) => terminado(evento.type))) {
+      reply.raw.end();
+      return reply;
+    }
+
+    const desuscribir = app.runEvents.subscribe(id, (evento) => {
+      escribir(evento);
+      // El servidor cierra al terminar; si no, `EventSource` reconecta para
+      // siempre contra un run que ya no va a emitir nada.
+      if (terminado(evento.type)) cerrar();
+    });
+
+    // Sin esto, proxies y balanceadores cortan la conexion durante las fases
+    // largas: el agente puede pasar minutos investigando sin emitir nada.
+    const latido = setInterval(() => {
+      if (!reply.raw.writableEnded) reply.raw.write(`: ping${SSE_FIN}`);
+    }, 15_000);
+
+    let cerrado = false;
+    function cerrar(): void {
+      if (cerrado) return;
+      cerrado = true;
+      clearInterval(latido);
+      desuscribir();
+      if (!reply.raw.writableEnded) reply.raw.end();
+    }
+
+    request.raw.on("close", cerrar);
+    return reply;
   });
 
   app.get("/api/repos/:id/runs", async (request) => {

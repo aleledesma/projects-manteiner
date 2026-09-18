@@ -13,6 +13,7 @@ import type { AgentRunInput, AgentRunOutput, AgentRuntime } from "./agent-runtim
 import { CredentialCrypto } from "./credential-crypto.ts";
 import { ProviderCredentialService } from "./provider-credentials.ts";
 import type { RepositoryWorkspaceService } from "./repository-workspace.ts";
+import { RunEventBus } from "./run-events.ts";
 import { RunOrchestratorService } from "./run-orchestrator.ts";
 
 const informe = validReport();
@@ -99,6 +100,7 @@ function agenteFalso(
         tokensInput: 100,
         tokensOutput: 20,
         costUsd: null,
+        steps: [],
         ...respuesta,
       } as AgentRunOutput;
     },
@@ -115,6 +117,7 @@ describe("RunOrchestratorService", () => {
       workspaceFalso(registro),
       agenteFalso({}),
       credentials,
+      new RunEventBus(database, () => 5_000),
       () => 5_000,
     );
 
@@ -149,6 +152,7 @@ describe("RunOrchestratorService", () => {
       workspaceFalso({ destruido: false }),
       agenteFalso({}, capturado),
       credentials,
+      new RunEventBus(database),
     );
 
     await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
@@ -164,6 +168,7 @@ describe("RunOrchestratorService", () => {
       workspaceFalso(registro),
       agenteFalso({ structured: { nada: "que ver" } }),
       credentials,
+      new RunEventBus(database),
     );
 
     const run = await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
@@ -189,6 +194,7 @@ describe("RunOrchestratorService", () => {
         throw new AppError("RUN_TIMEOUT", "excedido", 504);
       }),
       credentials,
+      new RunEventBus(database),
     );
 
     const run = await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
@@ -206,6 +212,7 @@ describe("RunOrchestratorService", () => {
       workspaceFalso({ destruido: false }),
       agenteFalso({}),
       credentials,
+      new RunEventBus(database),
     );
 
     await assert.rejects(
@@ -224,6 +231,7 @@ describe("RunOrchestratorService", () => {
       workspaceFalso({ destruido: false }),
       agenteFalso({}),
       credentials,
+      new RunEventBus(database),
     );
 
     await assert.rejects(
