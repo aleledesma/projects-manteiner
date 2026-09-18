@@ -324,7 +324,7 @@ export class DockerAgentRuntime implements AgentRuntime {
     // La suscripcion se abre antes de la sesion: si se abriera despues se
     // perderian los primeros eventos, que son justo los que sacan a la UI del
     // "preparando".
-    const cortarEventos = await this.#consumirEventos(client, traductor, input.signal);
+    const cortarEventos = this.#consumirEventos(baseUrl, authenticatedFetch, traductor, input.signal);
 
     // La credencial entra por HTTP, ya con el servidor arriba (I4). Nunca pasa
     // por `Env`, asi que no queda en `docker inspect` ni en /proc.
@@ -407,24 +407,21 @@ export class DockerAgentRuntime implements AgentRuntime {
    * Nunca puede tumbar el run: si la suscripcion falla o se corta, la auditoria
    * sigue y lo unico que se pierde es el progreso en vivo.
    */
-  async #consumirEventos(
-    client: ReturnType<typeof createOpencodeClient>,
+  #consumirEventos(
+    baseUrl: string,
+    authenticatedFetch: typeof fetch,
     traductor: OpencodeTranslator,
     signal: AbortSignal | undefined,
-  ): Promise<() => void> {
-    let vivo = true;
-    const cortar = () => {
-      vivo = false;
-    };
+  ): () => void {
+    const controller = new AbortController();
+    const cortar = () => controller.abort();
     signal?.addEventListener("abort", cortar, { once: true });
 
     void (async () => {
       try {
-        const suscripcion = await client.event.subscribe();
-        const stream = (suscripcion as { stream?: AsyncIterable<unknown> }).stream;
-        if (!stream) return;
-        for await (const evento of stream) {
-          if (!vivo) break;
+        const respuesta = await authenticatedFetch(`${baseUrl}/event`, { signal: controller.signal });
+        if (!respuesta.ok || !respuesta.body) return;
+        for await (const evento of leerSse(respuesta.body, controller.signal)) {
           traductor.handle(evento);
         }
       } catch {
@@ -609,6 +606,56 @@ function estadoHttpDe(error: unknown): number | undefined {
     if (typeof valor === "number") return valor;
   }
   return undefined;
+}
+
+/**
+ * Lee el stream de eventos de opencode.
+ *
+ * Se parsea `GET /event` a mano en vez de usar `client.event.subscribe()` del
+ * SDK: verificado contra opencode 1.18.30, ese metodo devuelve `{ stream }`
+ * pero no entrega ningun evento, ni siquiera creando una sesion. El endpoint
+ * crudo si funciona y emite `server.connected` de entrada.
+ */
+const SALTO = String.fromCharCode(10);
+const SEPARADOR = SALTO + SALTO;
+
+async function* leerSse(
+  cuerpo: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+): AsyncGenerator<unknown> {
+  const lector = cuerpo.getReader();
+  const decodificador = new TextDecoder();
+  let pendiente = "";
+
+  try {
+    while (!signal.aborted) {
+      const { done, value } = await lector.read();
+      if (done) return;
+      pendiente += decodificador.decode(value, { stream: true });
+
+      // Los eventos van separados por una linea en blanco.
+      let corte = pendiente.indexOf(SEPARADOR);
+      while (corte !== -1) {
+        const bloque = pendiente.slice(0, corte);
+        pendiente = pendiente.slice(corte + 2);
+        const datos = bloque
+          .split(SALTO)
+          .filter((linea) => linea.startsWith("data:"))
+          .map((linea) => linea.slice(5).trim())
+          .join("");
+        if (datos) {
+          try {
+            yield JSON.parse(datos);
+          } catch {
+            // Un evento malformado no puede cortar el stream.
+          }
+        }
+        corte = pendiente.indexOf(SEPARADOR);
+      }
+    }
+  } finally {
+    await lector.cancel().catch(() => {});
+  }
 }
 
 function mensajeDe(error: unknown): string {

@@ -116,7 +116,7 @@ export function RepoCard({ repo, auditando, onAuditar, onVerInforme, onVerHistor
             onTermino={onRecargar}
           />
         ) : run === null ? (
-          <Vacio onAuditar={onAuditar} />
+          <Vacio />
         ) : run.status === "succeeded" && run.healthScore !== null ? (
           <Informe run={run} onVer={() => onVerInforme(run.id)} />
         ) : (
@@ -176,7 +176,7 @@ function EnCurso({
         <Spinner className="size-4 shrink-0 text-accent" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13.5px] font-medium text-accent-text">
-            {enCurso?.title ?? PASO_DE_ESTADO[estado] ?? "Auditando"}
+            {enCurso?.title ?? PASO_DE_ESTADO[progreso.estado ?? estado] ?? "Auditando"}
           </p>
           <p className="mt-0.5 truncate text-[12.5px] text-ink-faint">
             {progreso.herramienta ? (
@@ -206,19 +206,15 @@ function EnCurso({
   );
 }
 
-function Vacio({ onAuditar }: { onAuditar: () => void }) {
+/** Sin boton propio: el de la cabecera ya es la accion de la tarjeta. */
+function Vacio() {
   return (
-    <div className="flex items-center gap-3">
-      <div className="min-w-0 flex-1">
-        <p className="text-[13.5px] font-medium">Todavía no lo auditaste</p>
-        <p className="mt-0.5 max-w-[52ch] text-[12.5px] text-ink-faint">
-          La primera auditoría inventaría las dependencias, revisa el runtime y propone lo que
-          conviene actualizar.
-        </p>
-      </div>
-      <Button size="sm" variant="primary" className="shrink-0" onClick={onAuditar}>
-        Auditar ahora
-      </Button>
+    <div>
+      <p className="text-[13.5px] font-medium">Todavía no lo auditaste</p>
+      <p className="mt-0.5 max-w-[56ch] text-[12.5px] text-ink-faint">
+        La primera auditoría inventaría las dependencias, revisa el runtime y propone lo que
+        conviene actualizar.
+      </p>
     </div>
   );
 }

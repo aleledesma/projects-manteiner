@@ -6,6 +6,12 @@ import type { ProgresoRun, StepView } from "./useRunEvents.ts";
 
 const FASES_ESPERADAS = 7;
 
+const ESTADO: Record<string, string> = {
+  preparing: "Preparando el workspace",
+  cloning: "Clonando el repositorio",
+  running: "El agente está trabajando",
+};
+
 /**
  * Vista del run en curso (V4).
  *
@@ -58,7 +64,7 @@ export function RunEnVivo({ run, progreso }: { run: Run; progreso: ProgresoRun }
           </header>
 
           {progreso.steps.length === 0 ? (
-            <Esperando />
+            <Esperando estado={progreso.estado ?? run.status} herramienta={progreso.herramienta} />
           ) : (
             <ol className="px-4 py-2">
               {progreso.steps.map((paso, indice) => (
@@ -197,13 +203,32 @@ function Reintentando({ reintento }: { reintento: NonNullable<ProgresoRun["reint
   );
 }
 
-function Esperando() {
+/**
+ * Todavia no hay fases. Puede ser que el run recien arranque, o que el modelo
+ * no haya creado su lista de tareas: en ese caso las herramientas igual llegan,
+ * y mostrarlas es lo unico que distingue "trabajando" de "colgado".
+ */
+function Esperando({
+  estado,
+  herramienta,
+}: {
+  estado: string;
+  herramienta: ProgresoRun["herramienta"];
+}) {
   return (
     <div className="px-4 py-8 text-center">
-      <p className="text-[13px] text-ink-muted">Esperando que el agente arme su plan…</p>
-      <p className="mx-auto mt-1.5 max-w-[46ch] text-[12.5px] text-ink-faint">
-        Las fases aparecen acá en cuanto el agente crea su lista de tareas.
+      <p className="text-[13px] text-ink-muted">
+        {ESTADO[estado] ?? "Esperando que el agente arme su plan…"}
       </p>
+      {herramienta ? (
+        <p className="mx-auto mt-2.5 max-w-[52ch] truncate font-mono text-[11.5px] text-ink-faint">
+          <span className="text-accent">&gt;</span> {herramienta.title}
+        </p>
+      ) : (
+        <p className="mx-auto mt-1.5 max-w-[46ch] text-[12.5px] text-ink-faint">
+          Las fases aparecen acá en cuanto el agente crea su lista de tareas.
+        </p>
+      )}
     </div>
   );
 }

@@ -110,17 +110,28 @@ function Evolucion({ runs }: { runs: RunResumen[] }) {
   );
 }
 
+const EN_CURSO = new Set(["preparing", "cloning", "running"]);
+
+const ESTADO: Record<string, string> = {
+  preparing: "Preparando el workspace",
+  cloning: "Clonando el repositorio",
+  running: "Auditoría en curso",
+  timed_out: "Excedió el tiempo límite",
+  cancelled: "Cancelada",
+};
+
 function Fila({ run, onVer }: { run: RunResumen; onVer: () => void }) {
   const ok = run.status === "succeeded" && run.healthScore !== null;
+  const corriendo = EN_CURSO.has(run.status);
   const banda = ok ? bandaDeSalud(run.healthScore!) : null;
 
   return (
     <button
       type="button"
-      disabled={!ok}
+      disabled={!ok && !corriendo}
       onClick={onVer}
       className={`flex items-center gap-3 rounded-xl border border-white/6 bg-surface px-3.5 py-3 text-left transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-        ok ? "hover:border-white/12 hover:bg-raised" : "cursor-default"
+        ok || corriendo ? "hover:border-white/12 hover:bg-raised" : "cursor-default"
       }`}
     >
       <span
@@ -131,12 +142,12 @@ function Fila({ run, onVer }: { run: RunResumen; onVer: () => void }) {
             : { borderColor: "rgb(255 255 255 / 0.08)" }
         }
       >
-        {ok ? run.healthScore : "—"}
+        {ok ? run.healthScore : corriendo ? <Spinner className="size-4 text-accent" /> : "—"}
       </span>
 
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] text-ink">
-          {run.headline ?? (run.status === "timed_out" ? "Excedió el tiempo límite" : "La auditoría falló")}
+          {run.headline ?? ESTADO[run.status] ?? "La auditoría falló"}
         </span>
         <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-ink-faint">
           <span>{relativo(run.finishedAt ?? run.queuedAt)}</span>
@@ -162,7 +173,7 @@ function Fila({ run, onVer }: { run: RunResumen; onVer: () => void }) {
         </span>
       </span>
 
-      {!ok ? <Chip>{run.status}</Chip> : null}
+      {corriendo ? <Chip tone="accent">En curso</Chip> : !ok ? <Chip>{run.status}</Chip> : null}
     </button>
   );
 }

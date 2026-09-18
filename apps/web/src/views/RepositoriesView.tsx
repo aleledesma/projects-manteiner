@@ -59,8 +59,12 @@ export function RepositoriesView({ onVerInforme, recargarMe }: Props) {
     setLanzando((previos) => new Set(previos).add(repoId));
     setError(null);
     try {
-      await api.post<{ id: string }>(`/api/repos/${repoId}/runs`);
-      await cargar();
+      // El 202 trae el id: se abre la vista del run enseguida, que es donde
+      // esta el progreso en vivo. Quedarse en la lista seria mirar una tarjeta
+      // cuando hay una pantalla entera dedicada a esto.
+      const { id } = await api.post<{ id: string }>(`/api/repos/${repoId}/runs`);
+      void cargar();
+      onVerInforme(id);
     } catch (cause) {
       setError(traducirFallo(cause));
     } finally {

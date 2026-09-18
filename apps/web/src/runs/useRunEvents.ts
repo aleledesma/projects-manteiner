@@ -31,6 +31,9 @@ export type ProgresoRun = {
   mensajes: string[];
   archivos: string[];
   reintento: Reintento | null;
+  /** Último estado que reportó el servidor. Manda sobre el de la lista, que
+   *  puede haber quedado viejo desde que se cargó. */
+  estado: string | null;
   conectado: boolean;
   /** El run terminó: hay que volver a pedir `GET /api/runs/:id`. */
   termino: boolean;
@@ -42,6 +45,7 @@ const VACIO: ProgresoRun = {
   mensajes: [],
   archivos: [],
   reintento: null,
+  estado: null,
   conectado: false,
   termino: false,
 };
@@ -81,6 +85,11 @@ export function useRunEvents(runId: string | null, activo: boolean): ProgresoRun
 
     es.addEventListener("open", () => setProgreso((p) => ({ ...p, conectado: true })));
     es.addEventListener("error", () => setProgreso((p) => ({ ...p, conectado: false })));
+
+    on("run.status", (datos) => {
+      const estado = typeof datos["status"] === "string" ? datos["status"] : null;
+      if (estado) setProgreso((p) => ({ ...p, estado }));
+    });
 
     on("steps.updated", (datos) => {
       const steps = Array.isArray(datos["steps"]) ? (datos["steps"] as StepView[]) : [];
