@@ -6,11 +6,57 @@ import { z } from "zod";
 import type { Config } from "../config.ts";
 import { AppError } from "../errors.ts";
 import type { GithubCloneRepository } from "./github-app.ts";
+import { assertPushTarget, PUBLISH_ALLOWLIST } from "./push-target.ts";
 
 const cloneResultSchema = z.object({
   baseSha: z.string().regex(/^[0-9a-f]{40}$/),
   sizeKb: z.number().int().nonnegative(),
 });
+
+const publishResultSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("no-changes") }),
+  z.object({
+    status: z.literal("pushed"),
+    commitSha: z.string().regex(/^[0-9a-f]{40}$/),
+    filesB64: z.string(),
+  }),
+]);
+
+export interface PublishBranchInput {
+  runId: string;
+  owner: string;
+  repository: string;
+  /** Viene del contenedor de clonado, antes de que el agente tocara el volumen. */
+  baseSha: string;
+  headBranch: string;
+  defaultBranch: string;
+  volumeName: string;
+  token: string;
+  commitMessage: string;
+}
+
+export type PublishBranchResult =
+  | { status: "no-changes" }
+  | { status: "pushed"; commitSha: string; files: string[] };
+
+/** Lo que el servicio de PRs necesita del runtime: el unico camino de escritura. */
+export interface PublishRuntime {
+  publishBranch(input: PublishBranchInput): Promise<PublishBranchResult>;
+}
+
+interface GitContainerInput {
+  runId: string;
+  kind: "clone" | "publish";
+  volumeName: string;
+  cmd: string[];
+  env: string[];
+  token: string;
+  timeoutMs: number;
+  timeoutError: AppError;
+  exitError: (exitCode: number) => AppError;
+  fallbackCode: string;
+  fallbackMessage: string;
+}
 
 export interface RepositoryCloneInput {
   runId: string;
@@ -135,7 +181,7 @@ export interface WorkspaceDockerClient {
   createContainer(options: Dockerode.ContainerCreateOptions): Promise<CloneContainer>;
 }
 
-export class DockerWorkspaceRuntime implements WorkspaceRuntime {
+export class DockerWorkspaceRuntime implements WorkspaceRuntime, PublishRuntime {
   private readonly client: WorkspaceDockerClient;
 
   constructor(
@@ -178,10 +224,83 @@ export class DockerWorkspaceRuntime implements WorkspaceRuntime {
       token: string;
     },
   ): Promise<Omit<ClonedWorkspace, "volumeName">> {
+    const lastLine = await this.runGitContainer({
+      runId: input.runId,
+      kind: "clone",
+      volumeName: input.volumeName,
+      cmd: ["/usr/local/bin/clone.sh", input.owner, input.repository, input.branch],
+      env: [],
+      token: input.token,
+      timeoutMs: this.config.CLONE_TIMEOUT_MS,
+      timeoutError: new AppError("CLONE_TIMEOUT", "El clonado excedio el tiempo limite.", 504),
+      exitError: (exitCode) =>
+        new AppError("CLONE_FAILED", "No se pudo clonar el repositorio.", 502, { exitCode }),
+      fallbackCode: "CLONE_FAILED",
+      fallbackMessage: "No se pudo clonar el repositorio.",
+    });
+    try {
+      return cloneResultSchema.parse(JSON.parse(lastLine ?? ""));
+    } catch {
+      throw new AppError("CLONE_FAILED", "El contenedor de clonacion devolvio datos invalidos.", 502);
+    }
+  }
+
+  /**
+   * Unico punto del codigo que escribe en GitHub con git (doc 03). La rama
+   * llega ya computada y se vuelve a afirmar aca, justo antes del push.
+   */
+  async publishBranch(input: PublishBranchInput): Promise<PublishBranchResult> {
+    assertPushTarget(input.headBranch, input.defaultBranch);
+    const lastLine = await this.runGitContainer({
+      runId: input.runId,
+      kind: "publish",
+      volumeName: input.volumeName,
+      cmd: [
+        "/usr/local/bin/publish.sh",
+        input.owner,
+        input.repository,
+        input.baseSha,
+        input.headBranch,
+        ...PUBLISH_ALLOWLIST,
+      ],
+      env: [`MANTEINER_COMMIT_MESSAGE=${input.commitMessage}`],
+      token: input.token,
+      timeoutMs: this.config.PUBLISH_TIMEOUT_MS,
+      timeoutError: new AppError("PUBLISH_TIMEOUT", "La publicacion de la rama excedio el tiempo limite.", 504),
+      exitError: (exitCode) => publishExitError(exitCode, input.headBranch),
+      fallbackCode: "PUBLISH_FAILED",
+      fallbackMessage: "No se pudo pushear la rama del PR.",
+    });
+    let salida: z.infer<typeof publishResultSchema>;
+    try {
+      salida = publishResultSchema.parse(JSON.parse(lastLine ?? ""));
+    } catch {
+      throw new AppError("PUBLISH_FAILED", "El contenedor de publicacion devolvio datos invalidos.", 502);
+    }
+    if (salida.status === "no-changes") return { status: "no-changes" };
+    const files = Buffer.from(salida.filesB64, "base64")
+      .toString("utf8")
+      .split("\n")
+      .filter(Boolean);
+    return { status: "pushed", commitSha: salida.commitSha, files };
+  }
+
+  async removeVolume(volumeName: string): Promise<void> {
+    await this.dockerApiCall((abortSignal) =>
+      this.client.getVolume(volumeName).remove({ force: true, abortSignal }),
+    );
+  }
+
+  /**
+   * Corre un contenedor efimero de `manteiner-git` sobre el volumen, le pasa el
+   * token por stdin y devuelve la ultima linea de stdout. El contenedor se borra
+   * siempre, haya salido bien o mal.
+   */
+  private async runGitContainer(input: GitContainerInput): Promise<string | undefined> {
     let container: CloneContainer | undefined;
-    let result: Omit<ClonedWorkspace, "volumeName"> | undefined;
+    let result: string | undefined;
     let operationError: unknown;
-    const containerName = `manteiner-clone-${input.runId}`;
+    const containerName = `manteiner-${input.kind}-${input.runId}`;
 
     try {
       try {
@@ -189,14 +308,15 @@ export class DockerWorkspaceRuntime implements WorkspaceRuntime {
           this.client.createContainer({
             name: containerName,
             Image: this.config.GIT_IMAGE,
-            Cmd: ["/usr/local/bin/clone.sh", input.owner, input.repository, input.branch],
+            Cmd: input.cmd,
+            Env: input.env,
             AttachStdin: true,
             AttachStdout: true,
             AttachStderr: true,
             OpenStdin: true,
             StdinOnce: true,
             Tty: false,
-            Labels: { "manteiner.run": input.runId, "manteiner.kind": "clone" },
+            Labels: { "manteiner.run": input.runId, "manteiner.kind": input.kind },
             HostConfig: {
               Mounts: [{ Type: "volume", Source: input.volumeName, Target: "/work" }],
               CapDrop: ["ALL"],
@@ -222,12 +342,12 @@ export class DockerWorkspaceRuntime implements WorkspaceRuntime {
         throw error;
       }
 
-      result = await this.runCloneContainer(container, input.token);
+      result = await this.attachAndWait(container, input);
     } catch (error) {
       operationError =
         error instanceof AppError
           ? error
-          : appErrorWithCause("CLONE_FAILED", "No se pudo clonar el repositorio.", 502, error);
+          : appErrorWithCause(input.fallbackCode, input.fallbackMessage, 502, error);
     }
 
     if (container) {
@@ -236,24 +356,18 @@ export class DockerWorkspaceRuntime implements WorkspaceRuntime {
           container!.remove({ force: true, v: false, abortSignal }),
         );
       } catch {
-        throw cleanupError(["clone_container"], operationError);
+        throw cleanupError([`${input.kind}_container`], operationError);
       }
     }
 
     if (operationError !== undefined) throw operationError;
-    return result!;
+    return result;
   }
 
-  async removeVolume(volumeName: string): Promise<void> {
-    await this.dockerApiCall((abortSignal) =>
-      this.client.getVolume(volumeName).remove({ force: true, abortSignal }),
-    );
-  }
-
-  private async runCloneContainer(
+  private async attachAndWait(
     container: CloneContainer,
-    token: string,
-  ): Promise<Omit<ClonedWorkspace, "volumeName">> {
+    input: GitContainerInput,
+  ): Promise<string | undefined> {
     const stream = await this.dockerApiCall((abortSignal) =>
       container.attach({
         stream: true,
@@ -268,36 +382,27 @@ export class DockerWorkspaceRuntime implements WorkspaceRuntime {
       this.dockerApiCall((abortSignal) => container.start({ abortSignal })),
       streamError,
     ]);
-    stream.end(`${token}\n`);
+    stream.end(`${input.token}\n`);
 
     const result = await Promise.race([
       withAbortDeadline(
         (abortSignal) => container.wait({ abortSignal }),
-        this.config.CLONE_TIMEOUT_MS,
-        new AppError("CLONE_TIMEOUT", "El clonado excedio el tiempo limite.", 504),
+        input.timeoutMs,
+        input.timeoutError,
       ),
       streamError,
     ]);
     const { stdout } = await this.dockerApiCall((abortSignal) =>
       readContainerLogs(container, abortSignal),
     );
-    if (result.StatusCode !== 0) {
-      throw new AppError("CLONE_FAILED", "No se pudo clonar el repositorio.", 502, {
-        exitCode: result.StatusCode,
-      });
-    }
+    if (result.StatusCode !== 0) throw input.exitError(result.StatusCode);
 
-    const lastLine = stdout
+    return stdout
       .toString("utf8")
       .trim()
       .split(/\r?\n/)
       .filter(Boolean)
       .at(-1);
-    try {
-      return cloneResultSchema.parse(JSON.parse(lastLine ?? ""));
-    } catch {
-      throw new AppError("CLONE_FAILED", "El contenedor de clonacion devolvio datos invalidos.", 502);
-    }
   }
 
   private dockerApiCall<T>(operation: (abortSignal: AbortSignal) => Promise<T>): Promise<T> {
@@ -335,6 +440,17 @@ export class DockerWorkspaceRuntime implements WorkspaceRuntime {
       }
     }
   }
+}
+
+/** Codigos de salida de `publish.sh`: 3 rama prohibida, 4 rama existente. */
+function publishExitError(exitCode: number, headBranch: string): AppError {
+  if (exitCode === 3) {
+    return new AppError("INVALID_PUSH_TARGET", "Se intento publicar en una rama no permitida.", 500);
+  }
+  if (exitCode === 4) {
+    return new AppError("PR_BRANCH_EXISTS", `La rama ${headBranch} ya existe; no se pisa.`, 409);
+  }
+  return new AppError("PUBLISH_FAILED", "No se pudo pushear la rama del PR.", 502, { exitCode });
 }
 
 function bufferSink(chunks: Buffer[]): Writable {

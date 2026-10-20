@@ -239,6 +239,7 @@ export function githubRoutes(app: FastifyInstance): void {
                  ultimo.findings_count AS lastRunFindingsCount, ultimo.model_id AS lastRunModelId,
                  ultimo.error_code AS lastRunErrorCode, ultimo.queued_at AS lastRunQueuedAt,
                  ultimo.finished_at AS lastRunFinishedAt,
+                 ultimo.pr_number AS lastRunPrNumber, ultimo.pr_url AS lastRunPrUrl,
                  (SELECT count(*) FROM run_findings f
                    WHERE f.run_id = ultimo.id AND f.severity = 'high') AS lastRunHigh,
                  (SELECT count(*) FROM run_findings f
@@ -285,6 +286,8 @@ export function githubRoutes(app: FastifyInstance): void {
                 errorCode: row["lastRunErrorCode"],
                 queuedAt: row["lastRunQueuedAt"],
                 finishedAt: row["lastRunFinishedAt"],
+                prNumber: row["lastRunPrNumber"],
+                prUrl: row["lastRunPrUrl"],
                 severities: {
                   high: conteo("lastRunHigh"),
                   medium: conteo("lastRunMedium"),

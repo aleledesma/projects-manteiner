@@ -10,6 +10,7 @@ const ESTADO: Record<string, string> = {
   preparing: "Preparando el workspace",
   cloning: "Clonando el repositorio",
   running: "El agente está trabajando",
+  publishing_pr: "Publicando el Pull Request",
 };
 
 /**
@@ -110,9 +111,9 @@ export function RunEnVivo({ run, progreso }: { run: Run; progreso: ProgresoRun }
 
           <Panel titulo="Qué va a pasar al terminar">
             <p className="text-xs/[18px] text-ink-faint">
-              El informe queda en el histórico y se puede releer cuando quieras. La creación del
-              Pull Request llega con la Fase 7; hasta entonces, el agente propone los cambios pero
-              no los publica.
+              El informe queda en el histórico y se puede releer cuando quieras. Si el agente
+              actualizó dependencias, Manteiner abre un Pull Request con esos cambios en una rama
+              nueva; nunca toca tu rama principal ni hace merge.
             </p>
           </Panel>
         </aside>

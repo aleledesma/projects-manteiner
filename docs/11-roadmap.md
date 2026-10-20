@@ -173,25 +173,44 @@ verificarlo contra un run real.
 
 ---
 
-## Fase 7 — Pull Requests
+## Fase 7 — Pull Requests ✅ IMPLEMENTADA
 
-- [ ] `publish.sh` en la imagen `manteiner-git`: filtrado por allowlist, rama, commit, push.
-- [ ] Aserción dura del destino del push (`assertPushTarget`) + test que intente pushear a `main` y falle.
-- [ ] Lectura del diff por `exec` (a memoria) para el informe.
-- [ ] `POST /pulls` desde el orquestador.
-- [ ] Manejo de casos borde: sin diff, rama existente, repo archivado, sin permisos.
-- [ ] Persistencia de `pr_number` / `pr_url` y evento `run.pr_created`.
+- [x] `publish.sh` en la imagen `manteiner-git`: filtrado por allowlist, rama, commit, push.
+- [x] Aserción dura del destino del push (`assertPushTarget`) + test que intente pushear a `main` y falle.
+- [x] Lectura del diff por `exec` (a memoria) para el informe. (Ya estaba desde la Fase 5.)
+- [x] `POST /pulls` desde el orquestador.
+- [x] Manejo de casos borde: sin diff, rama existente, repo archivado, sin permisos.
+- [x] Persistencia de `pr_number` / `pr_url` / `pr_branch` y evento `run.pr_created`.
+- [x] UI: link al PR en el informe y chip `PR #n` en la tarjeta del repositorio.
 
-**Entregable:** una auditoría produce un PR real de actualizaciones de dependencias.
+Decisiones de implementación:
+
+- 🟢 **`.git` no se considera confiable.** El agente corrió con `bash: allow` sobre ese mismo
+  volumen, así que `publish.sh` reescribe `.git/config` (un `url.*.insteadOf` plantado desviaría
+  el push con el token), desactiva hooks y `fsmonitor`, y hace `git reset` a la `base_sha` que
+  devolvió el contenedor de clonado (no la del archivo del volumen). Si el agente commiteó por su
+  cuenta, esos cambios vuelven al working tree y pasan igual por la allowlist.
+- 🟢 El push usa `GIT_ASKPASS` + FIFO, igual que el clon: el token no aparece en la línea de
+  comandos ni en `http.extraHeader`.
+- 🟢 Un PR fallido **no** invalida la auditoría: queda en `result_json.pullRequest` con su motivo
+  (`REPO_ARCHIVED`, `NO_ALLOWED_CHANGES`, `GITHUB_PERMISSION_MISSING`, `PR_BRANCH_EXISTS`…). La única
+  excepción es `INVALID_PUSH_TARGET`, que indica un bug y tumba el run.
+- 🟢 Si el push salió y falló el `POST /pulls`, se guarda la rama para poder abrir el PR a mano.
+
+**Entregable:** una auditoría produce un PR real de actualizaciones de dependencias. Falta
+verificarlo contra un repositorio real (requiere la GitHub App con `contents` y `pull_requests`
+en Read & Write).
 
 ---
 
-## Fase 8 — Reporte PDF e histórico
+## Fase 8 — Reporte PDF e histórico 🔜 PRÓXIMA FEATURE
+
+El histórico y la UI del informe ya existen (Fase 5). Lo que queda pendiente es el PDF.
 
 - [ ] Plantilla con `@react-pdf/renderer` según [08](./08-reportes-pdf.md).
 - [ ] `run_artifacts` + endpoint de descarga seguro.
 - [ ] Regeneración del PDF.
-- [ ] UI del informe (tabs) y del histórico del repo.
+- [x] UI del informe (tabs) y del histórico del repo. (Adelantada en la Fase 5.)
 
 **Entregable:** v1 completa.
 

@@ -110,12 +110,13 @@ function Evolucion({ runs }: { runs: RunResumen[] }) {
   );
 }
 
-const EN_CURSO = new Set(["preparing", "cloning", "running"]);
+const EN_CURSO = new Set(["preparing", "cloning", "running", "publishing_pr"]);
 
 const ESTADO: Record<string, string> = {
   preparing: "Preparando el workspace",
   cloning: "Clonando el repositorio",
   running: "Auditoría en curso",
+  publishing_pr: "Publicando el Pull Request",
   timed_out: "Excedió el tiempo límite",
   cancelled: "Cancelada",
 };

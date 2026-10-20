@@ -5,7 +5,8 @@
  * `withClonedRepository`, haya terminado bien, mal, por timeout o por
  * cancelacion. Esa garantia es la razon de ser de todo el diseno (doc 05).
  *
- * La publicacion del PR no esta aca: es la Fase 7.
+ * Si el agente propuso un PR, se publica antes de soltar el volumen: el
+ * contenedor de publicacion necesita el working tree que dejo el agente.
  */
 
 import { randomUUID } from "node:crypto";
@@ -22,7 +23,8 @@ import type { DatabaseConnection } from "../db/client.ts";
 import { AppError } from "../errors.ts";
 import type { AgentRuntime } from "./agent-runtime.ts";
 import type { ProviderCredentialService } from "./provider-credentials.ts";
-import type { RepositoryWorkspaceService } from "./repository-workspace.ts";
+import { filesInDiff, type PullRequestOutcome, type PullRequestService } from "./pull-requests.ts";
+import type { ClonedWorkspace, RepositoryWorkspaceService } from "./repository-workspace.ts";
 import type { RunEventBus } from "./run-events.ts";
 
 /** Lo minimo que el orquestador necesita del logger de Fastify. */
@@ -70,6 +72,8 @@ export class RunOrchestratorService {
     private readonly eventos: RunEventBus,
     private readonly now: () => number = Date.now,
     private readonly logger: RunLogger = { error: () => {} },
+    /** Sin servicio de PRs (tests, o GitHub sin permisos) la auditoria corre igual. */
+    private readonly pullRequests?: PullRequestService,
   ) {}
 
   /**
@@ -119,7 +123,7 @@ export class RunOrchestratorService {
     credential: Awaited<ReturnType<ProviderCredentialService["getUsable"]>>,
   ): Promise<RunRow> {
     try {
-      const salida = await this.workspaces.withClonedRepository(
+      const { salida, report, warnings, pullRequest } = await this.workspaces.withClonedRepository(
         {
           runId,
           installationId: repository.installationId,
@@ -128,7 +132,7 @@ export class RunOrchestratorService {
         async (workspace) => {
           this.#marcar(runId, "running", { commit_sha: workspace.baseSha });
           this.eventos.publish(runId, { type: "run.status", payload: { status: "running", at: this.now() } });
-          return this.agent.run({
+          const salida = await this.agent.run({
             runId,
             userId: input.userId,
             volumeName: workspace.volumeName,
@@ -141,11 +145,15 @@ export class RunOrchestratorService {
             credential,
             onEvent: (evento) => this.eventos.publish(runId, evento),
           });
+          // Se valida antes de publicar: un informe que no cumple el contrato
+          // no puede abrir un PR en el repositorio de nadie.
+          const { report, warnings } = this.#validar(salida.structured);
+          const pullRequest = await this.#publicar(runId, input, repository, workspace, report, salida.diff);
+          return { salida, report, warnings, pullRequest };
         },
       );
 
-      const { report, warnings } = this.#validar(salida.structured);
-      this.#persistirResultado(runId, report, warnings, salida);
+      this.#persistirResultado(runId, report, warnings, salida, pullRequest);
       this.#inicio.delete(runId);
       this.eventos.publish(runId, {
         type: "run.completed",
@@ -223,6 +231,48 @@ export class RunOrchestratorService {
     return { report: normalized.report, warnings: normalized.warnings };
   }
 
+  /**
+   * Publica el PR si el agente propuso uno. Un fallo de publicacion NO invalida
+   * la auditoria (doc 03): queda registrado y el informe se guarda igual. La
+   * unica excepcion es `INVALID_PUSH_TARGET`, que indica un bug y tumba el run.
+   */
+  async #publicar(
+    runId: string,
+    input: StartRunInput,
+    repository: RepositoryRow,
+    workspace: ClonedWorkspace,
+    report: MaintenanceReport,
+    diff: string,
+  ): Promise<PullRequestOutcome | null> {
+    const propuesta = report.proposed_pull_request;
+    if (!this.pullRequests || !propuesta) return null;
+
+    this.#marcar(runId, "publishing_pr", {});
+    this.eventos.publish(runId, { type: "run.status", payload: { status: "publishing_pr", at: this.now() } });
+
+    const resultado = await this.pullRequests.publish({
+      runId,
+      auditType: input.auditType ?? "maintenance",
+      installationId: repository.installationId,
+      githubRepositoryId: repository.githubRepoId,
+      volumeName: workspace.volumeName,
+      baseSha: workspace.baseSha,
+      title: propuesta.title,
+      body: propuesta.body,
+      touchedFiles: filesInDiff(diff),
+    });
+
+    if (resultado.status === "created") {
+      this.eventos.publish(runId, {
+        type: "run.pr_created",
+        payload: { number: resultado.number, url: resultado.url, branch: resultado.branch },
+      });
+    } else if (resultado.status === "failed") {
+      this.logger.error({ runId, pullRequest: resultado }, "el PR no se publico");
+    }
+    return resultado;
+  }
+
   #persistirResultado(
     runId: string,
     report: MaintenanceReport,
@@ -235,6 +285,7 @@ export class RunOrchestratorService {
       tokensOutput: number | null;
       costUsd: number | null;
     },
+    pullRequest: PullRequestOutcome | null,
   ): void {
     const ahora = this.now();
     const escribir = this.database.sqlite.transaction(() => {
@@ -243,13 +294,14 @@ export class RunOrchestratorService {
           `UPDATE runs SET status = 'succeeded', result_json = ?, health_score = ?, headline = ?,
              findings_count = ?, opencode_session_id = ?, container_id = ?,
              tokens_input = ?, tokens_output = ?, cost_usd = ?,
+             pr_number = ?, pr_url = ?, pr_branch = ?,
              finished_at = ?, duration_ms = ? - started_at
            WHERE id = ?`,
         )
         .run(
           // El diff viaja con el informe: es lo que despues alimenta el visor
           // de diff y el PR de la Fase 7, y capturarlo sin guardarlo no servia.
-          JSON.stringify({ report, warnings, diff: salida.diff || null }),
+          JSON.stringify({ report, warnings, diff: salida.diff || null, pullRequest }),
           report.summary.health_score,
           report.summary.headline,
           report.findings.length,
@@ -258,6 +310,11 @@ export class RunOrchestratorService {
           salida.tokensInput,
           salida.tokensOutput,
           salida.costUsd,
+          pullRequest?.status === "created" ? pullRequest.number : null,
+          pullRequest?.status === "created" ? pullRequest.url : null,
+          pullRequest?.status === "created"
+            ? pullRequest.branch
+            : pullRequest?.status === "failed" ? pullRequest.branch : null,
           ahora,
           ahora,
           runId,

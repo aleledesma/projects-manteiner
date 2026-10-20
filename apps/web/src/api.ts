@@ -139,7 +139,8 @@ export type GithubInstallation = {
 export type Severity = "high" | "medium" | "low" | "info";
 
 export type RunStatus =
-  | "preparing" | "cloning" | "running" | "succeeded" | "failed" | "timed_out" | "cancelled";
+  | "preparing" | "cloning" | "running" | "publishing_pr" | "succeeded" | "failed" | "timed_out"
+  | "cancelled";
 
 export type LastRun = {
   id: string;
@@ -151,6 +152,8 @@ export type LastRun = {
   errorCode: string | null;
   queuedAt: number;
   finishedAt: number | null;
+  prNumber: number | null;
+  prUrl: string | null;
   severities: Record<Severity, number>;
 };
 
@@ -194,6 +197,20 @@ export type Report = {
   limitations: string[];
 };
 
+/** Resultado de la publicacion del PR (Fase 7). `null` si el agente no propuso uno. */
+export type PullRequestOutcome =
+  | {
+      status: "created";
+      number: number;
+      url: string;
+      branch: string;
+      commitSha: string;
+      files: string[];
+      discarded: string[];
+    }
+  | { status: "skipped"; code: string; message: string; discarded: string[] }
+  | { status: "failed"; code: string; message: string; branch: string | null };
+
 export type Run = {
   id: string;
   repositoryId: string;
@@ -208,6 +225,9 @@ export type Run = {
   healthScore: number | null;
   findingsCount: number;
   headline: string | null;
+  prNumber: number | null;
+  prUrl: string | null;
+  prBranch: string | null;
   errorCode: string | null;
   errorMessage: string | null;
   /** JSON con los detalles del fallo: campos del schema o logs del contenedor. */
@@ -219,7 +239,7 @@ export type Run = {
   startedAt: number | null;
   finishedAt: number | null;
   durationMs: number | null;
-  result: { report: Report; warnings: unknown[] } | null;
+  result: { report: Report; warnings: unknown[]; pullRequest?: PullRequestOutcome | null } | null;
 };
 
 export type AvailableRepository = {

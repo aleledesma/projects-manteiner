@@ -174,7 +174,7 @@ nuestro como el orquestador.
 - [ ] Probado un repo con prompt injection en el README: verificar que no escapa.
 - [ ] Verificado que tras un run **no queda el repositorio** en ningún punto del host (`docker volume ls`, búsqueda en el filesystem).
 - [ ] Verificado que el token de GitHub **no** aparece en `docker inspect` de ningún contenedor.
-- [ ] Test que intente pushear a la rama por defecto y confirme que `assertPushTarget` lo corta.
+- [x] Test que intente pushear a la rama por defecto y confirme que `assertPushTarget` lo corta.
 - [ ] Probado que un `runId` de otro usuario devuelve 404, no 403 (no filtrar existencia).
 - [ ] Rate limiting activo en los endpoints que gastan dinero.
 - [ ] Rotación de `MASTER_KEY` probada de punta a punta.

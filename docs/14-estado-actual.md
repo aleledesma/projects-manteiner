@@ -36,7 +36,9 @@ repositorio. El siguiente trabajo backend es la Fase 5.
 | V7 — Configuración web | 🟡 | Proveedores, modelo, catálogo, GitHub y cuenta; sin borrado de cuenta |
 | Fase 5 — Contenedor y agente | ✅ | Backend + UI: dashboard (V3), informe (V5) e histórico del repo |
 | Fase 6 — Streaming SSE | 🟡 | Bus, traductor, endpoint y vista en vivo (V4); sin verificar contra un run real |
-| Fases 5 a 9 | 🔲 | [roadmap](./11-roadmap.md) |
+| Fase 7 — Pull Requests | ✅ | `publish.sh`, `assertPushTarget`, `POST /pulls` y UI; falta verificar contra un repo real |
+| Fase 8 — PDF | 🔜 | Próxima feature |
+| Fase 9 — Endurecimiento | 🔲 | [roadmap](./11-roadmap.md) |
 
 **Comprobalo:**
 

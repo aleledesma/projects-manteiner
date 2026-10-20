@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { api, ApiError, type Report, type Run } from "../api.ts";
+import { api, ApiError, type PullRequestOutcome, type Report, type Run } from "../api.ts";
 import { Alert } from "../components/Alert.tsx";
 import { Button } from "../components/Button.tsx";
 import { Chip } from "../components/Chip.tsx";
@@ -12,7 +12,7 @@ import { RunEnVivo } from "../runs/RunEnVivo.tsx";
 import { useRunEvents } from "../runs/useRunEvents.ts";
 import { COLOR_SEVERIDAD, NOMBRE_SEVERIDAD, bandaDeSalud } from "../salud.ts";
 
-const EN_CURSO = new Set(["preparing", "cloning", "running"]);
+const EN_CURSO = new Set(["preparing", "cloning", "running", "publishing_pr"]);
 
 const PESO_SEVERIDAD: Record<string, number> = { high: 0, medium: 1, low: 2, info: 3 };
 const ORDEN_CATEGORIA: Record<string, string> = {
@@ -114,7 +114,7 @@ export function RunView({ runId, onVolver }: { runId: string; onVolver: () => vo
           </div>
 
           <div className="pt-6">
-            {pestana === "resumen" ? <Resumen report={report} /> : null}
+            {pestana === "resumen" ? <Resumen report={report} pullRequest={run.result?.pullRequest ?? null} /> : null}
             {pestana === "hallazgos" ? <Hallazgos report={report} /> : null}
             {pestana === "traza" ? <Traza report={report} /> : null}
             {pestana === "limitaciones" ? <Limitaciones report={report} /> : null}
@@ -274,7 +274,13 @@ function parsearDetalle(crudo: string | null): Detalle | null {
   }
 }
 
-function Resumen({ report }: { report: Report }) {
+function Resumen({
+  report,
+  pullRequest,
+}: {
+  report: Report;
+  pullRequest: PullRequestOutcome | null;
+}) {
   const { applied, deferred, unmaintained } = report.dependency_updates;
   const porSeveridad = report.findings.reduce<Record<string, number>>((acumulado, finding) => {
     acumulado[finding.severity] = (acumulado[finding.severity] ?? 0) + 1;
@@ -372,13 +378,7 @@ function Resumen({ report }: { report: Report }) {
             <div className="mt-2.5">
               <Markdown texto={report.proposed_pull_request.body} />
             </div>
-            <div className="mt-3.5 flex gap-2.5 border-t border-white/6 pt-3.5">
-              <InfoIcon className="mt-0.5 size-3.5 shrink-0 text-ink-faint" />
-              <p className="text-xs/[18px] text-ink-faint">
-                Manteiner todavía no abre el PR: la publicación es la Fase 7. Por ahora el
-                contenido queda acá para que lo revises.
-              </p>
-            </div>
+            <EstadoPr pullRequest={pullRequest} />
           </div>
         </section>
       ) : null}
@@ -396,6 +396,64 @@ function Resumen({ report }: { report: Report }) {
           </div>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+/** Qué pasó con el PR propuesto: abierto, salteado (con motivo) o fallido. */
+function EstadoPr({ pullRequest }: { pullRequest: PullRequestOutcome | null }) {
+  if (pullRequest?.status === "created") {
+    return (
+      <div className="mt-3.5 flex flex-col gap-2.5 border-t border-white/6 pt-3.5">
+        <a
+          href={pullRequest.url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 self-start text-[13px] font-medium text-accent hover:underline"
+        >
+          Ver PR #{pullRequest.number} en GitHub
+          <ExternalIcon className="size-3.5" />
+        </a>
+        <p className="text-xs/[18px] text-ink-faint">
+          Rama <span className="font-mono">{pullRequest.branch}</span> ·{" "}
+          {pullRequest.files.length} {pullRequest.files.length === 1 ? "archivo" : "archivos"}
+        </p>
+        {pullRequest.discarded.length > 0 ? <Descartados archivos={pullRequest.discarded} /> : null}
+      </div>
+    );
+  }
+
+  const mensaje =
+    pullRequest === null
+      ? "Este run no publicó el PR: el contenido queda acá para que lo revises."
+      : pullRequest.status === "failed" && pullRequest.branch
+        ? `${pullRequest.message} La rama ${pullRequest.branch} quedó publicada: podés abrir el PR a mano.`
+        : pullRequest.message;
+
+  return (
+    <div className="mt-3.5 flex flex-col gap-2.5 border-t border-white/6 pt-3.5">
+      <div className="flex gap-2.5">
+        <InfoIcon className="mt-0.5 size-3.5 shrink-0 text-ink-faint" />
+        <p className="text-xs/[18px] text-ink-faint">{mensaje}</p>
+      </div>
+      {pullRequest?.status === "skipped" && pullRequest.discarded.length > 0 ? (
+        <Descartados archivos={pullRequest.discarded} />
+      ) : null}
+    </div>
+  );
+}
+
+function Descartados({ archivos }: { archivos: string[] }) {
+  return (
+    <div className="text-xs/[18px] text-ink-faint">
+      <p>Descartados por estar fuera de la lista permitida (manifiestos y lockfiles):</p>
+      <ul className="mt-1 flex flex-col gap-0.5">
+        {archivos.map((archivo) => (
+          <li key={archivo} className="truncate font-mono text-ink-muted">
+            {archivo}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

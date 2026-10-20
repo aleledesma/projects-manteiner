@@ -16,12 +16,13 @@ const COLORES: Record<string, string> = {
   Shell: "#7cb194", HTML: "#c4906f", CSS: "#6f9dc4",
 };
 
-const EN_CURSO = new Set(["preparing", "cloning", "running"]);
+const EN_CURSO = new Set(["preparing", "cloning", "running", "publishing_pr"]);
 
 const PASO_DE_ESTADO: Record<string, string> = {
   preparing: "Preparando el workspace",
   cloning: "Clonando el repositorio",
   running: "El agente está auditando",
+  publishing_pr: "Publicando el Pull Request",
 };
 
 type Props = {
@@ -90,6 +91,16 @@ export function RepoCard({ repo, auditando, onAuditar, onVerInforme, onVerHistor
               Auditar
             </Button>
           )}
+          {run?.prUrl ? (
+            <a
+              href={run.prUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <Chip tone="accent">PR #{run.prNumber}</Chip>
+            </a>
+          ) : null}
           {run ? (
             <Button size="sm" variant="ghost" onClick={onVerHistorial}>
               Histórico

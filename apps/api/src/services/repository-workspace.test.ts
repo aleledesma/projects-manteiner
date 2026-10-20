@@ -205,13 +205,14 @@ function fakeDocker(
     createVolume?: Promise<{ Name: string }>;
     createError?: unknown;
     streamErrorOnStart?: Error;
+    output?: unknown;
   } = {},
 ) {
   const stream = new AttachedInput();
   const calls: string[] = [];
   let createOptions: Parameters<WorkspaceDockerClient["createContainer"]>[0] | undefined;
   const output = Buffer.from(
-    `${JSON.stringify({ baseSha: "b".repeat(40), sizeKb: 456 })}\n`,
+    `${JSON.stringify(options.output ?? { baseSha: "b".repeat(40), sizeKb: 456 })}\n`,
   );
   const container = {
     modem: {
@@ -365,5 +366,80 @@ describe("DockerWorkspaceRuntime", () => {
       (error: unknown) => error instanceof AppError && error.code === "CLONE_FAILED",
     );
     assert.equal(failed.calls.at(-1), "remove-container");
+  });
+});
+
+describe("DockerWorkspaceRuntime.publishBranch", () => {
+  const publishInput = {
+    runId: "run-123",
+    owner: "octocat",
+    repository: "hello-world",
+    baseSha: "a".repeat(40),
+    headBranch: "manteiner/maintenance/0123abcd",
+    defaultBranch: "main",
+    volumeName: "manteiner-ws-run-123",
+    token: "publish-token",
+    commitMessage: "chore(deps): actualizar",
+  };
+
+  it("nunca pushea a la rama por defecto: corta antes de crear el contenedor", async () => {
+    const docker = fakeDocker();
+    const runtime = new DockerWorkspaceRuntime(config, docker.client);
+
+    for (const headBranch of ["main", "feature/x", "manteiner/../main"]) {
+      await assert.rejects(
+        () => runtime.publishBranch({ ...publishInput, headBranch }),
+        (error: unknown) => error instanceof AppError && error.code === "INVALID_PUSH_TARGET",
+      );
+    }
+    await assert.rejects(
+      () => runtime.publishBranch({
+        ...publishInput,
+        headBranch: "manteiner/maintenance/0123abcd",
+        defaultBranch: "manteiner/maintenance/0123abcd",
+      }),
+      (error: unknown) => error instanceof AppError && error.code === "INVALID_PUSH_TARGET",
+    );
+    assert.deepEqual(docker.calls, []);
+  });
+
+  it("pasa la allowlist fija y el token por stdin, y lee los archivos commiteados", async () => {
+    const docker = fakeDocker({
+      output: {
+        status: "pushed",
+        commitSha: "c".repeat(40),
+        filesB64: Buffer.from("package.json\npackage-lock.json\n").toString("base64"),
+      },
+    });
+    const runtime = new DockerWorkspaceRuntime(config, docker.client);
+    const result = await runtime.publishBranch(publishInput);
+
+    assert.deepEqual(result, {
+      status: "pushed",
+      commitSha: "c".repeat(40),
+      files: ["package.json", "package-lock.json"],
+    });
+    assert.equal(docker.stream.input, "publish-token\n");
+    const cmd = docker.createOptions?.Cmd as string[];
+    assert.deepEqual(cmd.slice(0, 5), [
+      "/usr/local/bin/publish.sh",
+      "octocat",
+      "hello-world",
+      "a".repeat(40),
+      "manteiner/maintenance/0123abcd",
+    ]);
+    assert.ok(cmd.includes(":(glob)**/package.json"));
+    assert.ok(!docker.createOptions?.Env?.some((value) => value.includes("publish-token")));
+    assert.equal(docker.calls.at(-1), "remove-container");
+  });
+
+  it("traduce una rama existente a PR_BRANCH_EXISTS", async () => {
+    const docker = fakeDocker({ wait: Promise.resolve({ StatusCode: 4 }) });
+    const runtime = new DockerWorkspaceRuntime(config, docker.client);
+    await assert.rejects(
+      () => runtime.publishBranch(publishInput),
+      (error: unknown) => error instanceof AppError && error.code === "PR_BRANCH_EXISTS",
+    );
+    assert.equal(docker.calls.at(-1), "remove-container");
   });
 });

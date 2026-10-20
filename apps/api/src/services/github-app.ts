@@ -46,6 +46,19 @@ const repositoryCloneSchema = z.object({
   size: z.number().int().nonnegative(),
 });
 
+const repositoryPublishSchema = z.object({
+  id: z.number().int().positive(),
+  owner: z.object({ login: z.string() }),
+  name: z.string(),
+  default_branch: z.string(),
+  archived: z.boolean(),
+});
+
+const pullRequestSchema = z.object({
+  number: z.number().int().positive(),
+  html_url: z.url(),
+});
+
 const oauthTokenSchema = z.object({
   access_token: z.string().min(1),
 });
@@ -59,6 +72,8 @@ const organizationMembershipSchema = z.object({
 export type GithubInstallation = z.infer<typeof installationSchema>;
 export type GithubRepository = z.infer<typeof repositorySchema>;
 export type GithubCloneRepository = z.infer<typeof repositoryCloneSchema>;
+export type GithubPublishRepository = z.infer<typeof repositoryPublishSchema>;
+export type GithubPullRequest = z.infer<typeof pullRequestSchema>;
 
 export class GithubAppService {
   private readonly privateKey;
@@ -213,6 +228,79 @@ export class GithubAppService {
       );
     }
     return result.data;
+  }
+
+  /**
+   * Token fresco para publicar: el del clon ya fue revocado y, en un run largo,
+   * habria expirado igual. Limitado al repositorio y a lo minimo para el PR.
+   */
+  async createPublishToken(installationId: number, repositoryId: number): Promise<string> {
+    const response = await this.fetch(
+      `${API_BASE}/app/installations/${installationId}/access_tokens`,
+      {
+        method: "POST",
+        headers: { ...this.githubHeaders(this.createAppJwt()), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repository_ids: [repositoryId],
+          permissions: { contents: "write", pull_requests: "write" },
+        }),
+      },
+    );
+    // 422: la GitHub App no tiene esos permisos concedidos en la instalacion.
+    if (response.status === 422 || response.status === 403) {
+      throw new AppError(
+        "GITHUB_PERMISSION_MISSING",
+        "La GitHub App no tiene permiso de escritura (contents y pull requests) sobre este repositorio.",
+        403,
+      );
+    }
+    if (!response.ok) throw this.apiError(response.status);
+    return accessTokenSchema.parse(await this.readJson(response)).token;
+  }
+
+  async getRepositoryForPublish(token: string, repositoryId: number): Promise<GithubPublishRepository> {
+    const response = await this.request(`${API_BASE}/repositories/${repositoryId}`, {
+      headers: this.githubHeaders(token),
+    });
+    const result = repositoryPublishSchema.safeParse(await this.readJson(response));
+    if (!result.success || result.data.id !== repositoryId) {
+      throw new AppError(
+        "GITHUB_API_ERROR",
+        "GitHub devolvio datos invalidos para el repositorio.",
+        502,
+      );
+    }
+    return result.data;
+  }
+
+  /** Abre el PR. Nunca se hace merge: eso queda siempre en manos del usuario. */
+  async createPullRequest(
+    token: string,
+    input: { owner: string; repository: string; title: string; body: string; head: string; base: string },
+  ): Promise<GithubPullRequest> {
+    const response = await this.fetch(
+      `${API_BASE}/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repository)}/pulls`,
+      {
+        method: "POST",
+        headers: { ...this.githubHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: input.title,
+          body: input.body,
+          head: input.head,
+          base: input.base,
+          maintainer_can_modify: true,
+        }),
+      },
+    );
+    if (response.status === 422) {
+      throw new AppError(
+        "PR_CREATE_FAILED",
+        "GitHub rechazo la creacion del PR (puede que ya exista uno para esa rama).",
+        502,
+      );
+    }
+    if (!response.ok) throw this.apiError(response.status);
+    return pullRequestSchema.parse(await this.readJson(response));
   }
 
   async revokeInstallationToken(token: string): Promise<void> {

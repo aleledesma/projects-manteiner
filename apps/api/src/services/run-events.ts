@@ -31,6 +31,7 @@ export type RunEvent =
   | { type: "agent.retrying"; payload: { attempt: number; message: string; nextAt: number } }
   | { type: "agent.file_edited"; payload: { path: string } }
   | { type: "run.completed"; payload: { healthScore: number; findingsCount: number; headline: string } }
+  | { type: "run.pr_created"; payload: { number: number; url: string; branch: string } }
   | { type: "run.failed"; payload: { code: string; message: string } };
 
 export interface StoredEvent {

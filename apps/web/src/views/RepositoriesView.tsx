@@ -10,7 +10,7 @@ import { HistorialRepo } from "../repos/HistorialRepo.tsx";
 import { RepoCard } from "../repos/RepoCard.tsx";
 import { COLOR_SEVERIDAD } from "../salud.ts";
 
-const EN_CURSO = new Set(["preparing", "cloning", "running"]);
+const EN_CURSO = new Set(["preparing", "cloning", "running", "publishing_pr"]);
 
 type Filtro = "todos" | "en-curso" | "altos" | "nunca";
 

@@ -14,6 +14,7 @@ import { CredentialCrypto } from "./credential-crypto.ts";
 import { ProviderCredentialService } from "./provider-credentials.ts";
 import type { RepositoryWorkspaceService } from "./repository-workspace.ts";
 import { RunEventBus } from "./run-events.ts";
+import type { PullRequestOutcome, PullRequestService } from "./pull-requests.ts";
 import { RunOrchestratorService } from "./run-orchestrator.ts";
 
 const informe = validReport();
@@ -238,5 +239,102 @@ describe("RunOrchestratorService", () => {
       service.start({ userId: "user-2", repositoryId: REPO_ID }),
       (error) => error instanceof AppError && error.statusCode === 404,
     );
+  });
+
+  it("publica el PR propuesto antes de soltar el volumen y guarda numero y url", async () => {
+    const { database, credentials } = preparar();
+    conPreferencia(database, null);
+    const registro = { destruido: false };
+    let volumenVivoAlPublicar = false;
+    const prs = {
+      async publish(input: { volumeName: string; title: string }) {
+        volumenVivoAlPublicar = !registro.destruido && input.volumeName === "manteiner-ws-test";
+        return {
+          status: "created",
+          number: 7,
+          url: "https://github.com/one/repo/pull/7",
+          branch: "manteiner/maintenance/abcdef12",
+          commitSha: "c".repeat(40),
+          files: ["package.json"],
+          discarded: [],
+        } satisfies PullRequestOutcome;
+      },
+    } as unknown as PullRequestService;
+    const bus = new RunEventBus(database);
+    const service = new RunOrchestratorService(
+      database,
+      workspaceFalso(registro),
+      agenteFalso({ diff: "diff --git a/package.json b/package.json\n" }),
+      credentials,
+      bus,
+      Date.now,
+      undefined,
+      prs,
+    );
+
+    const run = await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
+    assert.equal(run.status, "succeeded");
+    assert.equal(volumenVivoAlPublicar, true);
+    const fila = database.sqlite
+      .prepare("SELECT pr_number, pr_url, pr_branch, result_json FROM runs WHERE id = ?")
+      .get(run.id) as Record<string, unknown>;
+    assert.equal(fila["pr_number"], 7);
+    assert.equal(fila["pr_url"], "https://github.com/one/repo/pull/7");
+    assert.equal(fila["pr_branch"], "manteiner/maintenance/abcdef12");
+    assert.equal(JSON.parse(fila["result_json"] as string).pullRequest.status, "created");
+  });
+
+  it("un PR fallido no invalida la auditoria", async () => {
+    const { database, credentials } = preparar();
+    conPreferencia(database, null);
+    const prs = {
+      async publish() {
+        return { status: "failed", code: "GITHUB_PERMISSION_MISSING", message: "sin permiso", branch: null };
+      },
+    } as unknown as PullRequestService;
+    const service = new RunOrchestratorService(
+      database,
+      workspaceFalso({ destruido: false }),
+      agenteFalso({}),
+      credentials,
+      new RunEventBus(database),
+      Date.now,
+      undefined,
+      prs,
+    );
+
+    const run = await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
+    assert.equal(run.status, "succeeded");
+    const fila = database.sqlite
+      .prepare("SELECT pr_number, result_json FROM runs WHERE id = ?")
+      .get(run.id) as Record<string, unknown>;
+    assert.equal(fila["pr_number"], null);
+    assert.equal(JSON.parse(fila["result_json"] as string).pullRequest.code, "GITHUB_PERMISSION_MISSING");
+  });
+
+  it("INVALID_PUSH_TARGET tumba el run", async () => {
+    const { database, credentials } = preparar();
+    conPreferencia(database, null);
+    const prs = {
+      async publish() {
+        throw new AppError("INVALID_PUSH_TARGET", "rama prohibida", 500);
+      },
+    } as unknown as PullRequestService;
+    const registro = { destruido: false };
+    const service = new RunOrchestratorService(
+      database,
+      workspaceFalso(registro),
+      agenteFalso({}),
+      credentials,
+      new RunEventBus(database),
+      Date.now,
+      undefined,
+      prs,
+    );
+
+    const run = await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
+    assert.equal(run.status, "failed");
+    assert.equal(run.errorCode, "INVALID_PUSH_TARGET");
+    assert.equal(registro.destruido, true);
   });
 });

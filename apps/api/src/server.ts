@@ -27,6 +27,7 @@ import { DockerOpencodeRuntime } from "./services/opencode-runtime.ts";
 import { ProviderCatalogService, type OpencodeProviderRuntime } from "./services/provider-catalog.ts";
 import { ProviderCredentialService } from "./services/provider-credentials.ts";
 import { OrphanCleanupService, type CleanupDockerClient } from "./services/docker-cleanup.ts";
+import { PullRequestService } from "./services/pull-requests.ts";
 import { RunOrchestratorService } from "./services/run-orchestrator.ts";
 import { RunEventBus } from "./services/run-events.ts";
 import {
@@ -94,11 +95,9 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
   const auth = createAuth(config, database.db);
   const githubApp = new GithubAppService(config);
   const docker = new DockerService(config, dependencies.dockerClient);
-  const repositoryWorkspace = new RepositoryWorkspaceService(
-    config,
-    githubApp,
-    new DockerWorkspaceRuntime(config, dependencies.workspaceDockerClient),
-  );
+  const workspaceRuntime = new DockerWorkspaceRuntime(config, dependencies.workspaceDockerClient);
+  const repositoryWorkspace = new RepositoryWorkspaceService(config, githubApp, workspaceRuntime);
+  const pullRequests = new PullRequestService(githubApp, workspaceRuntime);
   const agentRuntime = dependencies.agentRuntime
     ?? new DockerAgentRuntime(config, dependencies.agentDockerClient, dependencies.fetch);
   const app = Fastify({
@@ -186,6 +185,7 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
     runEvents,
     dependencies.now,
     app.log,
+    pullRequests,
   );
   app.decorate("runs", runs);
   app.decorate("runEvents", runEvents);

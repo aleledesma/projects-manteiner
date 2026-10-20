@@ -39,6 +39,7 @@ export function runRoutes(app: FastifyInstance): void {
                 r.schema_version AS schemaVersion, r.commit_sha AS commitSha,
                 r.base_branch AS baseBranch, r.health_score AS healthScore,
                 r.findings_count AS findingsCount, r.headline,
+                r.pr_number AS prNumber, r.pr_url AS prUrl, r.pr_branch AS prBranch,
                 r.error_code AS errorCode, r.error_message AS errorMessage,
                 r.error_detail AS errorDetail,
                 r.tokens_input AS tokensInput, r.tokens_output AS tokensOutput,
@@ -132,7 +133,8 @@ export function runRoutes(app: FastifyInstance): void {
     return app.database.sqlite
       .prepare(
         `SELECT id, status, health_score AS healthScore, findings_count AS findingsCount,
-                headline, error_code AS errorCode, queued_at AS queuedAt,
+                headline, pr_number AS prNumber, pr_url AS prUrl,
+                error_code AS errorCode, queued_at AS queuedAt,
                 finished_at AS finishedAt, duration_ms AS durationMs
          FROM runs
          WHERE repository_id = ? AND user_id = ?

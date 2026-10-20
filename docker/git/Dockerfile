@@ -9,7 +9,7 @@ RUN apk add --no-cache ca-certificates git \
     && touch /work/.volume-init \
     && chown manteiner:manteiner /work/.volume-init
 
-COPY --chown=manteiner:manteiner --chmod=0555 clone.sh /usr/local/bin/clone.sh
+COPY --chown=manteiner:manteiner --chmod=0555 clone.sh publish.sh /usr/local/bin/
 
 USER 10001:10001
 WORKDIR /work

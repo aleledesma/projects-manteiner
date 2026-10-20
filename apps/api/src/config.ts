@@ -61,6 +61,7 @@ const envSchema = z.object({
   GIT_IMAGE: z.string().trim().min(1, "no puede estar vacio").default("manteiner-git:0.1.0"),
   MAX_REPO_SIZE_KB: z.coerce.number().int().positive().default(2_000_000),
   CLONE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(30 * 60_000).default(5 * 60_000),
+  PUBLISH_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(30 * 60_000).default(3 * 60_000),
   PROVIDER_HTTP_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(10_000),
   OAUTH_DEVICE_TIMEOUT_MS: z.coerce.number().int().min(60_000).max(30 * 60_000).default(15 * 60_000),
   RUN_TIMEOUT_MS: z.coerce.number().int().min(60_000).max(2 * 60 * 60_000).default(30 * 60_000),
