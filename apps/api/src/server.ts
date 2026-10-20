@@ -27,6 +27,8 @@ import { DockerOpencodeRuntime } from "./services/opencode-runtime.ts";
 import { ProviderCatalogService, type OpencodeProviderRuntime } from "./services/provider-catalog.ts";
 import { ProviderCredentialService } from "./services/provider-credentials.ts";
 import { OrphanCleanupService, type CleanupDockerClient } from "./services/docker-cleanup.ts";
+import { registerRateLimit } from "./rate-limit.ts";
+import { redactDeep } from "./redact.ts";
 import { PullRequestService } from "./services/pull-requests.ts";
 import { RunOrchestratorService } from "./services/run-orchestrator.ts";
 import { RunEventBus } from "./services/run-events.ts";
@@ -49,7 +51,7 @@ export interface ServerDependencies {
 
 export function buildServer(config: Config, dependencies: ServerDependencies = {}): FastifyInstance {
   const database = openDatabase(config.DATABASE_PATH);
-  const credentialCrypto = new CredentialCrypto(masterKeyBytes(config));
+  const credentialCrypto = new CredentialCrypto(masterKeyBytes(config), config.MASTER_KEY_VERSION);
   let providerCredentials!: ProviderCredentialService;
   const openAIOAuth = new OpenAIOAuthService({
     fetch: dependencies.fetch,
@@ -107,8 +109,14 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
       ...(config.isProduction
         ? {}
         : { transport: { target: "pino-pretty", options: { translateTime: "HH:MM:ss", ignore: "pid,hostname" } } }),
-      // Primera capa de redaccion de secretos (doc 10). La redaccion por patron
-      // (sk-*, ghp_*, JWT) llega en la Fase 9; esto cubre lo obvio desde el dia uno.
+      // Segunda capa (Fase 9): redaccion por patron (sk-*, ghp_*, JWT, Bearer)
+      // en todo lo que se loguea, incluidos mensajes y stacks de errores.
+      hooks: {
+        logMethod(args, method) {
+          method.apply(this, args.map((arg) => redactDeep(arg)) as Parameters<typeof method>);
+        },
+      },
+      // Primera capa de redaccion de secretos (doc 10): campos con nombre conocido.
       redact: {
         paths: [
           "req.headers.authorization",
@@ -186,17 +194,24 @@ export function buildServer(config: Config, dependencies: ServerDependencies = {
     dependencies.now,
     app.log,
     pullRequests,
+    { maxConcurrentRuns: config.MAX_CONCURRENT_RUNS, maxQueuedRuns: config.MAX_QUEUED_RUNS },
   );
   app.decorate("runs", runs);
   app.decorate("runEvents", runEvents);
 
   registerErrorHandler(app);
+  registerRateLimit(app);
 
   app.register(healthRoutes, { prefix: "/api" });
-  authRoutes(app);
-  githubRoutes(app);
-  providerRoutes(app);
-  runRoutes(app);
+  // Las rutas se declaran recien cuando el plugin de rate limit termino de
+  // cargar: si no, su hook `onRoute` no las ve y quedan sin limite.
+  app.after((error) => {
+    if (error) throw error;
+    authRoutes(app);
+    githubRoutes(app);
+    providerRoutes(app);
+    runRoutes(app);
+  });
 
   return app;
 }

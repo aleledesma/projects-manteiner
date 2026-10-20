@@ -168,7 +168,7 @@ nuestro como el orquestador.
 - [ ] `MASTER_KEY` y `SESSION_SECRET` generados con CSPRNG, nunca en el repo.
 - [ ] HTTPS obligatorio; cookies `secure`.
 - [ ] Firma de webhooks verificada en tiempo constante.
-- [ ] Redacción de secretos activa en todos los loggers.
+- [x] Redacción de secretos activa en todos los loggers (por ruta y por patrón; `apps/api/src/redact.ts`).
 - [ ] Contenedores corriendo con usuario no-root verificado (`docker exec id`).
 - [ ] Probado que el socket de Docker **no** es accesible desde el contenedor.
 - [ ] Probado un repo con prompt injection en el README: verificar que no escapa.
@@ -176,5 +176,5 @@ nuestro como el orquestador.
 - [ ] Verificado que el token de GitHub **no** aparece en `docker inspect` de ningún contenedor.
 - [x] Test que intente pushear a la rama por defecto y confirme que `assertPushTarget` lo corta.
 - [ ] Probado que un `runId` de otro usuario devuelve 404, no 403 (no filtrar existencia).
-- [ ] Rate limiting activo en los endpoints que gastan dinero.
-- [ ] Rotación de `MASTER_KEY` probada de punta a punta.
+- [x] Rate limiting activo en los endpoints que gastan dinero.
+- [x] Rotación de `MASTER_KEY` probada de punta a punta (test con base real: rota, es idempotente y aborta entera si falla una fila).

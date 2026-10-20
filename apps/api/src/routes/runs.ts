@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { AppError } from "../errors.ts";
+import { LIMITES } from "../rate-limit.ts";
 
 /** El protocolo SSE separa campos con un salto y eventos con dos. */
 const SSE_NL = String.fromCharCode(10);
@@ -17,14 +18,14 @@ export function runRoutes(app: FastifyInstance): void {
    * run puede durar media hora. El cliente sigue el estado con
    * `GET /api/runs/:id` hasta que la Fase 6 traiga el streaming.
    */
-  app.post("/api/repos/:id/runs", async (request, reply) => {
+  app.post("/api/repos/:id/runs", { config: { rateLimit: LIMITES.runs } }, async (request, reply) => {
     const userId = await requireUserId(app, request);
     const { id } = repositoryParamsSchema.parse(request.params);
-    const { id: runId, finished } = await app.runs.start({ userId, repositoryId: id });
+    const { id: runId, status, finished } = await app.runs.start({ userId, repositoryId: id });
     // El fallo ya quedo registrado en la fila del run; sin este `catch` seria
     // ademas un unhandledRejection que tumba el proceso.
     finished.catch((error: unknown) => request.log.error({ err: error, runId }, "run fallido"));
-    return reply.status(202).send({ id: runId, status: "preparing" });
+    return reply.status(202).send({ id: runId, status });
   });
 
   app.get("/api/runs/:id", async (request) => {

@@ -2,11 +2,13 @@ import { fromNodeHeaders } from "better-auth/node";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 import { AppError } from "../errors.ts";
+import { LIMITES } from "../rate-limit.ts";
 
 export function authRoutes(app: FastifyInstance): void {
   app.route({
     method: ["GET", "POST"],
     url: "/api/auth/*",
+    config: { rateLimit: LIMITES.auth },
     handler: async (request, reply) => {
       const response = await app.auth.handler(toWebRequest(request, app.config.PUBLIC_URL));
 

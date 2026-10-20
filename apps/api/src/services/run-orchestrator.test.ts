@@ -337,4 +337,108 @@ describe("RunOrchestratorService", () => {
     assert.equal(run.errorCode, "INVALID_PUSH_TARGET");
     assert.equal(registro.destruido, true);
   });
+
+  describe("cola de runs", () => {
+    const REPO_2 = "22222222-2222-4222-8222-222222222222";
+
+    function segundoRepo(database: DatabaseConnection): void {
+      database.sqlite.prepare(
+        `INSERT INTO repositories
+          (id, user_id, installation_id, github_repo_id, owner, name, full_name, default_branch,
+           private, html_url, linked_at)
+         VALUES (?, 'user-1', 'inst-1', 78, 'one', 'repo2', 'one/repo2', 'main', 0,
+                 'https://github.com/one/repo2', 1)`,
+      ).run(REPO_2);
+    }
+
+    /** Agente que no termina hasta que el test lo suelta. */
+    function agenteBloqueado(): { agente: AgentRuntime; soltar: () => void; corridas: string[] } {
+      let soltar!: () => void;
+      const barrera = new Promise<void>((resolve) => (soltar = resolve));
+      const corridas: string[] = [];
+      const agente: AgentRuntime = {
+        async run(input: AgentRunInput) {
+          corridas.push(input.repository);
+          await barrera;
+          return {
+            structured: informe, sessionId: "s", containerId: "c", diff: "",
+            tokensInput: null, tokensOutput: null, costUsd: null, steps: [],
+          } as unknown as AgentRunOutput;
+        },
+      };
+      return { agente, soltar, corridas };
+    }
+
+    it("encola por encima del limite y arranca el siguiente al liberarse el lugar", async () => {
+      const { database, credentials } = preparar();
+      conPreferencia(database, null);
+      segundoRepo(database);
+      const { agente, soltar, corridas } = agenteBloqueado();
+      const service = new RunOrchestratorService(
+        database, workspaceFalso({ destruido: false }), agente, credentials,
+        new RunEventBus(database), Date.now, undefined, undefined,
+        { maxConcurrentRuns: 1, maxQueuedRuns: 5 },
+      );
+
+      const primero = await service.start({ userId: "user-1", repositoryId: REPO_ID });
+      const segundo = await service.start({ userId: "user-1", repositoryId: REPO_2 });
+      assert.equal(primero.status, "preparing");
+      assert.equal(segundo.status, "queued");
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepEqual(corridas, ["repo"]);
+      const encolado = database.sqlite
+        .prepare("SELECT status, started_at FROM runs WHERE id = ?").get(segundo.id) as Record<string, unknown>;
+      assert.equal(encolado["status"], "queued");
+      assert.equal(encolado["started_at"], null);
+
+      soltar();
+      assert.equal((await primero.finished).status, "succeeded");
+      assert.equal((await segundo.finished).status, "succeeded");
+      assert.deepEqual(corridas, ["repo", "repo2"]);
+    });
+
+    it("rechaza con 429 si la cola esta llena y con 409 un segundo run del mismo repo", async () => {
+      const { database, credentials } = preparar();
+      conPreferencia(database, null);
+      segundoRepo(database);
+      const { agente, soltar } = agenteBloqueado();
+      const service = new RunOrchestratorService(
+        database, workspaceFalso({ destruido: false }), agente, credentials,
+        new RunEventBus(database), Date.now, undefined, undefined,
+        { maxConcurrentRuns: 1, maxQueuedRuns: 0 },
+      );
+
+      const primero = await service.start({ userId: "user-1", repositoryId: REPO_ID });
+      await assert.rejects(
+        service.start({ userId: "user-1", repositoryId: REPO_ID }),
+        (error) => error instanceof AppError && error.code === "RUN_ALREADY_ACTIVE",
+      );
+      await assert.rejects(
+        service.start({ userId: "user-1", repositoryId: REPO_2 }),
+        (error) => error instanceof AppError && error.code === "RUN_QUEUE_FULL" && error.statusCode === 429,
+      );
+      soltar();
+      await primero.finished;
+    });
+
+    it("al apagar, los encolados se cancelan sin levantar contenedores", async () => {
+      const { database, credentials } = preparar();
+      conPreferencia(database, null);
+      segundoRepo(database);
+      const { agente, soltar, corridas } = agenteBloqueado();
+      const service = new RunOrchestratorService(
+        database, workspaceFalso({ destruido: false }), agente, credentials,
+        new RunEventBus(database), Date.now, undefined, undefined,
+        { maxConcurrentRuns: 1, maxQueuedRuns: 5 },
+      );
+
+      await service.start({ userId: "user-1", repositoryId: REPO_ID });
+      const segundo = await service.start({ userId: "user-1", repositoryId: REPO_2 });
+      const cierre = service.close();
+      soltar();
+      await cierre;
+      assert.equal((await segundo.finished).errorCode, "SERVER_SHUTTING_DOWN");
+      assert.deepEqual(corridas, ["repo"]);
+    });
+  });
 });

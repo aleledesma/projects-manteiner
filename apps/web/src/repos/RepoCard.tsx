@@ -16,9 +16,10 @@ const COLORES: Record<string, string> = {
   Shell: "#7cb194", HTML: "#c4906f", CSS: "#6f9dc4",
 };
 
-const EN_CURSO = new Set(["preparing", "cloning", "running", "publishing_pr"]);
+const EN_CURSO = new Set(["queued", "preparing", "cloning", "running", "publishing_pr"]);
 
 const PASO_DE_ESTADO: Record<string, string> = {
+  queued: "En cola, esperando un lugar libre",
   preparing: "Preparando el workspace",
   cloning: "Clonando el repositorio",
   running: "El agente está auditando",

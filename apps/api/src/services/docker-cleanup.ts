@@ -34,7 +34,7 @@ export interface CleanupReport {
 }
 
 /** Estados que solo pueden existir mientras el proceso que los creo sigue vivo. */
-const ESTADOS_VIVOS = ["preparing", "cloning", "running"] as const;
+const ESTADOS_VIVOS = ["queued", "preparing", "cloning", "running", "collecting", "publishing_pr", "generating_report"] as const;
 
 export class OrphanCleanupService {
   readonly #docker: CleanupDockerClient;

@@ -38,12 +38,12 @@ repositorio. El siguiente trabajo backend es la Fase 5.
 | Fase 6 — Streaming SSE | 🟡 | Bus, traductor, endpoint y vista en vivo (V4); sin verificar contra un run real |
 | Fase 7 — Pull Requests | ✅ | `publish.sh`, `assertPushTarget`, `POST /pulls` y UI; falta verificar contra un repo real |
 | Fase 8 — PDF | 🔜 | Próxima feature |
-| Fase 9 — Endurecimiento | 🔲 | [roadmap](./11-roadmap.md) |
+| Fase 9 — Endurecimiento | ✅ | Rate limit, cola de runs (2 simultáneos), redacción de secretos y rotación de `MASTER_KEY`; quedan verificaciones manuales |
 
 **Comprobalo:**
 
 ```bash
-npm ci && npm test             # 153/153 (93 api + 8 runner + 52 contracts)
+npm ci && npm test             # 179/179 (119 api + 8 runner + 52 contracts) — requiere Node >= 22.12
 npm run typecheck              # limpio
 npm run dev                    # curl http://localhost:3001/api/health
 ```

@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { AppError } from "../errors.ts";
+import { LIMITES } from "../rate-limit.ts";
 
 const oauthProviderSchema = z.object({ providerId: z.literal("openai") });
 const oauthStatusSchema = z.object({ pollToken: z.uuid() });
@@ -33,7 +34,7 @@ export function providerRoutes(app: FastifyInstance): void {
     return app.providerCatalog.get();
   });
 
-  app.post("/api/providers/catalog/refresh", async (request) => {
+  app.post("/api/providers/catalog/refresh", { config: { rateLimit: LIMITES.catalogRefresh } }, async (request) => {
     const userId = await requireUserId(app, request);
     const { providerId } = catalogRefreshSchema.parse(request.body ?? {});
     const credential = providerId
@@ -42,7 +43,7 @@ export function providerRoutes(app: FastifyInstance): void {
     return app.providerCatalog.refresh(credential);
   });
 
-  app.post("/api/providers", async (request, reply) => {
+  app.post("/api/providers", { config: { rateLimit: LIMITES.providerAuth } }, async (request, reply) => {
     const userId = await requireUserId(app, request);
     const input = apiCredentialSchema.parse(request.body);
     await app.providerCatalog.validateApiKey(input.providerId, input.apiKey);
@@ -55,11 +56,15 @@ export function providerRoutes(app: FastifyInstance): void {
     return reply.status(201).send(credential);
   });
 
-  app.post("/api/providers/oauth/:providerId/start", async (request) => {
-    const userId = await requireUserId(app, request);
-    oauthProviderSchema.parse(request.params);
-    return app.openAIOAuth.start(userId);
-  });
+  app.post(
+    "/api/providers/oauth/:providerId/start",
+    { config: { rateLimit: LIMITES.providerAuth } },
+    async (request) => {
+      const userId = await requireUserId(app, request);
+      oauthProviderSchema.parse(request.params);
+      return app.openAIOAuth.start(userId);
+    },
+  );
 
   app.get("/api/providers/oauth/:providerId/status", async (request) => {
     const userId = await requireUserId(app, request);

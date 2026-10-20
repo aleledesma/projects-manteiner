@@ -139,7 +139,7 @@ export type GithubInstallation = {
 export type Severity = "high" | "medium" | "low" | "info";
 
 export type RunStatus =
-  | "preparing" | "cloning" | "running" | "publishing_pr" | "succeeded" | "failed" | "timed_out"
+  | "queued" | "preparing" | "cloning" | "running" | "publishing_pr" | "succeeded" | "failed" | "timed_out"
   | "cancelled";
 
 export type LastRun = {

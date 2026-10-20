@@ -216,14 +216,37 @@ El histórico y la UI del informe ya existen (Fase 5). Lo que queda pendiente es
 
 ---
 
-## Fase 9 — Endurecimiento
+## Fase 9 — Endurecimiento ✅ IMPLEMENTADA (lo automatizable)
 
-- [ ] Rate limiting.
-- [ ] Sanitización del markdown en el frontend.
-- [ ] Redacción de secretos en logs.
-- [ ] Repo de prueba con prompt injection y verificación de contención.
-- [ ] Rotación de `MASTER_KEY`.
-- [ ] Recorrer la checklist de [10](./10-seguridad.md).
+- [x] Rate limiting por usuario con `@fastify/rate-limit` (ver tabla abajo).
+- [x] Límite de runs simultáneos con cola in-process (`MAX_CONCURRENT_RUNS=2`, `MAX_QUEUED_RUNS=10`).
+- [x] Un solo run activo por repositorio (`409 RUN_ALREADY_ACTIVE`).
+- [x] Sanitización del markdown en el frontend. (Ya estaba: `Markdown.tsx` arma elementos de React, nunca HTML.)
+- [x] Redacción de secretos por patrón en logs y en `error_message` / `error_detail` persistidos.
+- [x] Rotación de `MASTER_KEY`: `npm run rotate-master-key --workspace @manteiner/api`, transaccional e idempotente.
+- [ ] Repo de prueba con prompt injection y verificación de contención. **Pendiente, manual.**
+- [ ] Recorrer la checklist de [10](./10-seguridad.md). **Quedan los ítems de verificación manual.**
+
+| Endpoint | Límite | Clave |
+|---|---|---|
+| `POST /api/repos/:id/runs` | 5 / hora | usuario |
+| `POST /api/providers` y `POST /api/providers/oauth/:id/start` (comparten cupo) | 10 / 10 min | usuario |
+| `POST /api/providers/catalog/refresh` | 3 / 10 min | usuario |
+| `/api/auth/*` | 20 / min | IP |
+| Resto de `/api/*` | 300 / min | usuario (IP si no hay sesión) |
+| `GET /api/health` | sin límite | — |
+
+Al exceder: `429 { error: { code: "RATE_LIMITED" } }` con `Retry-After`. Se apaga con
+`RATE_LIMIT_ENABLED=false` (solo para depurar).
+
+⚠️ El store del rate limit y la cola de runs viven en memoria del proceso: se reinician con la API.
+Es coherente con el diseño de un solo proceso (doc 01); con varios procesos haría falta Redis.
+
+Rotación de `MASTER_KEY`, con la API apagada:
+
+1. `MASTER_KEY_PREVIOUS` = la clave actual; `MASTER_KEY` = una nueva; `MASTER_KEY_VERSION` + 1.
+2. `npm run rotate-master-key --workspace @manteiner/api`.
+3. Quitar `MASTER_KEY_PREVIOUS`. Si la clave anterior no descifra alguna fila, no se rota ninguna.
 
 ---
 

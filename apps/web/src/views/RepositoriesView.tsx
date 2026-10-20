@@ -10,7 +10,7 @@ import { HistorialRepo } from "../repos/HistorialRepo.tsx";
 import { RepoCard } from "../repos/RepoCard.tsx";
 import { COLOR_SEVERIDAD } from "../salud.ts";
 
-const EN_CURSO = new Set(["preparing", "cloning", "running", "publishing_pr"]);
+const EN_CURSO = new Set(["queued", "preparing", "cloning", "running", "publishing_pr"]);
 
 type Filtro = "todos" | "en-curso" | "altos" | "nunca";
 
@@ -290,5 +290,9 @@ function traducirFallo(cause: unknown): string {
     return "El servidor no puede hablar con Docker, así que no puede correr auditorías.";
   if (cause.code === "WORKSPACE_TOO_LARGE")
     return "El repositorio supera el tamaño máximo configurado.";
+  if (cause.code === "RUN_ALREADY_ACTIVE")
+    return "Este repositorio ya tiene una auditoría en curso o en cola.";
+  if (cause.code === "RUN_QUEUE_FULL")
+    return "Hay demasiadas auditorías esperando. Probá de nuevo cuando termine alguna.";
   return cause.message;
 }

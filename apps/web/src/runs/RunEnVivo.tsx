@@ -7,6 +7,7 @@ import type { ProgresoRun, StepView } from "./useRunEvents.ts";
 const FASES_ESPERADAS = 7;
 
 const ESTADO: Record<string, string> = {
+  queued: "En cola: hay otras auditorías usando los lugares disponibles",
   preparing: "Preparando el workspace",
   cloning: "Clonando el repositorio",
   running: "El agente está trabajando",

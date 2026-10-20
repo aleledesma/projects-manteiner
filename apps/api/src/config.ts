@@ -74,8 +74,19 @@ const envSchema = z.object({
   CONTAINER_START_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(10 * 60_000).default(60_000),
   AGENT_MEMORY_MB: z.coerce.number().int().min(512).max(32_768).default(2_048),
   AGENT_CPUS: z.coerce.number().min(0.5).max(32).default(2),
+  // Cada run levanta un contenedor con CPU y memoria reservadas: el resto espera
+  // en cola (estado `queued`) hasta que se libera un lugar.
+  MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(10).default(2),
+  MAX_QUEUED_RUNS: z.coerce.number().int().min(0).max(100).default(10),
+  // Fase 9: limites por usuario en los endpoints que gastan dinero o recursos.
+  RATE_LIMIT_ENABLED: z.stringbool().default(true),
 
   MASTER_KEY: masterKey,
+  // Rotacion (doc 10): la clave que cifra hoy lleva esta version. Para rotar se
+  // sube la version, se pone la clave vieja en MASTER_KEY_PREVIOUS y se corre
+  // `npm run rotate-master-key --workspace @manteiner/api`.
+  MASTER_KEY_VERSION: z.coerce.number().int().min(1).default(1),
+  MASTER_KEY_PREVIOUS: masterKey.optional(),
   SESSION_SECRET: z.string().min(32, "debe tener al menos 32 caracteres"),
   GITHUB_OAUTH_CLIENT_ID: z.string().min(1, "es obligatorio"),
   GITHUB_OAUTH_CLIENT_SECRET: z.string().min(1, "es obligatorio"),
@@ -129,6 +140,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
 
 export class ConfigError extends Error {
   override readonly name = "ConfigError";
+}
+
+export function previousMasterKeyBytes(config: Config): Buffer | null {
+  return config.MASTER_KEY_PREVIOUS ? Buffer.from(config.MASTER_KEY_PREVIOUS, "base64") : null;
 }
 
 /** La clave maestra ya decodificada. Se deriva aca para no repetir el Buffer.from. */

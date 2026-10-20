@@ -21,6 +21,7 @@ import {
 
 import type { DatabaseConnection } from "../db/client.ts";
 import { AppError } from "../errors.ts";
+import { redactSecrets } from "../redact.ts";
 import type { AgentRuntime } from "./agent-runtime.ts";
 import type { ProviderCredentialService } from "./provider-credentials.ts";
 import { filesInDiff, type PullRequestOutcome, type PullRequestService } from "./pull-requests.ts";
@@ -58,11 +59,26 @@ interface PreferenceRow {
   model_id: string;
 }
 
+export interface RunLimits {
+  /** Runs con contenedor vivo a la vez. El resto espera en `queued`. */
+  readonly maxConcurrentRuns: number;
+  /** Runs en espera como maximo; por encima se rechaza con 429. */
+  readonly maxQueuedRuns: number;
+}
+
+const LIMITES_POR_DEFECTO: RunLimits = { maxConcurrentRuns: 2, maxQueuedRuns: 10 };
+
+type Credential = Awaited<ReturnType<ProviderCredentialService["getUsable"]>>;
+
 export class RunOrchestratorService {
   /** Runs vivos en este proceso, para poder esperarlos al apagar. */
   readonly #enCurso = new Map<string, Promise<RunRow>>();
   /** `started_at` de cada run vivo, para calcular la duracion al fallar. */
   readonly #inicio = new Map<string, number>();
+  /** Runs esperando un lugar, en orden de llegada. Cada uno es su `resolve`. */
+  readonly #cola: Array<() => void> = [];
+  #activos = 0;
+  #cerrando = false;
 
   constructor(
     private readonly database: DatabaseConnection,
@@ -74,6 +90,7 @@ export class RunOrchestratorService {
     private readonly logger: RunLogger = { error: () => {} },
     /** Sin servicio de PRs (tests, o GitHub sin permisos) la auditoria corre igual. */
     private readonly pullRequests?: PullRequestService,
+    private readonly limites: RunLimits = LIMITES_POR_DEFECTO,
   ) {}
 
   /**
@@ -84,35 +101,93 @@ export class RunOrchestratorService {
    *
    * `finished` queda expuesto para los tests y para el apagado ordenado.
    */
-  async start(input: StartRunInput): Promise<{ id: string; finished: Promise<RunRow> }> {
+  async start(
+    input: StartRunInput,
+  ): Promise<{ id: string; status: "preparing" | "queued"; finished: Promise<RunRow> }> {
+    if (this.#cerrando) {
+      throw new AppError("SERVER_SHUTTING_DOWN", "La API se esta apagando; intenta en unos segundos.", 503);
+    }
     const repository = this.#buscarRepositorio(input.userId, input.repositoryId);
     const preferencia = this.#buscarPreferencia(input.userId, input.repositoryId);
     // Se resuelve antes de crear el run: fallar antes de insertar da un mensaje
     // util, fallar a mitad del clon obliga a interpretar un run muerto.
     const credential = await this.credentials.getUsable(input.userId, preferencia.provider_id);
+    this.#exigirSinRunActivo(repository.id);
+
+    const encolado = this.#activos >= this.limites.maxConcurrentRuns;
+    if (encolado && this.#cola.length >= this.limites.maxQueuedRuns) {
+      throw new AppError(
+        "RUN_QUEUE_FULL",
+        "Hay demasiadas auditorias en espera. Proba de nuevo cuando termine alguna.",
+        429,
+      );
+    }
 
     const runId = randomUUID();
-    this.#insertarRun(runId, input, repository, preferencia);
-    this.#inicio.set(runId, this.now());
-    this.eventos.publish(runId, { type: "run.status", payload: { status: "preparing", at: this.now() } });
+    const status = encolado ? "queued" : "preparing";
+    this.#insertarRun(runId, input, repository, preferencia, status);
+    this.eventos.publish(runId, { type: "run.status", payload: { status, at: this.now() } });
 
     // `#ejecutar` no deberia rechazar, pero si su propio catch falla (por
     // ejemplo un SQLITE_BUSY al marcar el run) la promesa rechaza. Sin este
     // handler seria un unhandledRejection, que en Node tumba el proceso.
-    const finished = this.#ejecutar(runId, input, repository, preferencia, credential)
+    const finished = this.#esperarTurno()
+      .then(() => this.#ejecutar(runId, input, repository, preferencia, encolado ? null : credential))
       .catch((error: unknown) => {
         this.logger.error({ runId, err: error }, "el run no pudo registrar su propio fallo");
         return { id: runId, status: "failed", errorCode: "INTERNAL_ERROR" } satisfies RunRow;
       })
-      .finally(() => this.#enCurso.delete(runId));
+      .finally(() => {
+        this.#liberarTurno();
+        this.#enCurso.delete(runId);
+      });
 
     this.#enCurso.set(runId, finished);
-    return { id: runId, finished };
+    return { id: runId, status, finished };
   }
 
-  /** Espera a que terminen los runs en curso, para un apagado ordenado. */
+  /**
+   * Apagado ordenado: no se aceptan runs nuevos, los encolados se cancelan sin
+   * levantar contenedores y se espera a los que ya estan corriendo.
+   */
   async close(): Promise<void> {
+    this.#cerrando = true;
+    this.#cola.splice(0).forEach((despertar) => {
+      this.#activos += 1;
+      despertar();
+    });
     await Promise.allSettled([...this.#enCurso.values()]);
+  }
+
+  /** Toma un lugar libre o espera en la cola, en orden de llegada. */
+  #esperarTurno(): Promise<void> {
+    if (this.#activos < this.limites.maxConcurrentRuns) {
+      this.#activos += 1;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => this.#cola.push(resolve));
+  }
+
+  /** El lugar pasa directo al siguiente de la cola, sin pasar por cero. */
+  #liberarTurno(): void {
+    const siguiente = this.#cola.shift();
+    if (siguiente) siguiente();
+    else this.#activos -= 1;
+  }
+
+  /** Un solo run activo por repositorio: evita PRs duplicados (doc 01). */
+  #exigirSinRunActivo(repositoryId: string): void {
+    const activo = this.database.sqlite
+      .prepare(
+        `SELECT id FROM runs
+         WHERE repository_id = ?
+           AND status IN ('queued','preparing','cloning','running','collecting','publishing_pr','generating_report')
+         LIMIT 1`,
+      )
+      .get(repositoryId);
+    if (activo) {
+      throw AppError.conflict("RUN_ALREADY_ACTIVE", "Este repositorio ya tiene una auditoria en curso.");
+    }
   }
 
   async #ejecutar(
@@ -120,9 +195,23 @@ export class RunOrchestratorService {
     input: StartRunInput,
     repository: RepositoryRow,
     preferencia: PreferenceRow,
-    credential: Awaited<ReturnType<ProviderCredentialService["getUsable"]>>,
+    credencialInicial: Credential | null,
   ): Promise<RunRow> {
     try {
+      let credential = credencialInicial;
+      if (credential === null) {
+        // Estuvo en cola: puede haber esperado lo suficiente como para que un
+        // token OAuth necesite refresco, asi que se vuelve a pedir.
+        if (this.#cerrando) {
+          throw new AppError("SERVER_SHUTTING_DOWN", "La API se apago antes de que el run arrancara.", 503);
+        }
+        this.#marcar(runId, "preparing", { started_at: this.now() });
+        this.eventos.publish(runId, { type: "run.status", payload: { status: "preparing", at: this.now() } });
+        credential = await this.credentials.getUsable(input.userId, preferencia.provider_id);
+      }
+      this.#inicio.set(runId, this.now());
+      const credencial = credential;
+
       const { salida, report, warnings, pullRequest } = await this.workspaces.withClonedRepository(
         {
           runId,
@@ -142,7 +231,7 @@ export class RunOrchestratorService {
             baseSha: workspace.baseSha,
             providerId: preferencia.provider_id,
             modelId: preferencia.model_id,
-            credential,
+            credential: credencial,
             onEvent: (evento) => this.eventos.publish(runId, evento),
           });
           // Se valida antes de publicar: un informe que no cumple el contrato
@@ -182,7 +271,9 @@ export class RunOrchestratorService {
       );
       this.#marcar(runId, code === "RUN_TIMEOUT" ? "timed_out" : "failed", {
         error_code: code,
-        error_message: message,
+        // Se persiste y se muestra en la UI: un token en un log de contenedor
+        // no puede terminar guardado en la base.
+        error_message: redactSecrets(message),
         error_detail: detalleParaElUsuario(error),
         finished_at: this.now(),
         // El camino de exito lo calcula en SQL; el de fallo tambien lo necesita
@@ -190,7 +281,7 @@ export class RunOrchestratorService {
         duration_ms: this.now() - (this.#inicio.get(runId) ?? this.now()),
       });
       this.#inicio.delete(runId);
-      this.eventos.publish(runId, { type: "run.failed", payload: { code, message } });
+      this.eventos.publish(runId, { type: "run.failed", payload: { code, message: redactSecrets(message) } });
       this.eventos.forget(runId);
       return { id: runId, status: code === "RUN_TIMEOUT" ? "timed_out" : "failed", errorCode: code };
     }
@@ -407,6 +498,7 @@ export class RunOrchestratorService {
     input: StartRunInput,
     repository: RepositoryRow,
     preferencia: PreferenceRow,
+    status: "preparing" | "queued",
   ): void {
     const ahora = this.now();
     this.database.sqlite
@@ -414,20 +506,22 @@ export class RunOrchestratorService {
         `INSERT INTO runs
            (id, user_id, repository_id, audit_type, status, trigger, provider_id, model_id,
             agent_version, schema_version, base_branch, queued_at, started_at)
-         VALUES (?, ?, ?, ?, 'preparing', 'manual', ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         runId,
         input.userId,
         repository.id,
         input.auditType ?? "maintenance",
+        status,
         preferencia.provider_id,
         preferencia.model_id,
         AGENT_VERSION,
         SCHEMA_VERSION,
         repository.defaultBranch,
         ahora,
-        ahora,
+        // Un run encolado todavia no empezo: su duracion se mide desde que toma lugar.
+        status === "queued" ? null : ahora,
       );
   }
 
@@ -463,7 +557,7 @@ function describirFallo(error: unknown): { code: string; message: string } {
  */
 function detalleParaElUsuario(error: unknown): string | null {
   if (error instanceof AppError && error.details !== undefined) {
-    return JSON.stringify(error.details).slice(0, 32_000);
+    return redactSecrets(JSON.stringify(error.details)).slice(0, 32_000);
   }
   return null;
 }

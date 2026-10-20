@@ -12,7 +12,7 @@ import { RunEnVivo } from "../runs/RunEnVivo.tsx";
 import { useRunEvents } from "../runs/useRunEvents.ts";
 import { COLOR_SEVERIDAD, NOMBRE_SEVERIDAD, bandaDeSalud } from "../salud.ts";
 
-const EN_CURSO = new Set(["preparing", "cloning", "running", "publishing_pr"]);
+const EN_CURSO = new Set(["queued", "preparing", "cloning", "running", "publishing_pr"]);
 
 const PESO_SEVERIDAD: Record<string, number> = { high: 0, medium: 1, low: 2, info: 3 };
 const ORDEN_CATEGORIA: Record<string, string> = {
