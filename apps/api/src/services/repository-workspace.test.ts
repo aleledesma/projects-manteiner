@@ -206,6 +206,8 @@ function fakeDocker(
     createError?: unknown;
     streamErrorOnStart?: Error;
     output?: unknown;
+    stderr?: string;
+    logsError?: Error;
   } = {},
 ) {
   const stream = new AttachedInput();
@@ -216,8 +218,11 @@ function fakeDocker(
   );
   const container = {
     modem: {
-      demuxStream(source: NodeJS.ReadableStream, stdout: NodeJS.WritableStream) {
-        source.on("data", (chunk) => stdout.write(chunk));
+      demuxStream(source: NodeJS.ReadableStream, stdout: NodeJS.WritableStream, stderr: NodeJS.WritableStream) {
+        source.on("data", (chunk) => {
+          stdout.write(chunk);
+          if (options.stderr) stderr.write(options.stderr);
+        });
       },
     },
     async attach() {
@@ -237,6 +242,7 @@ function fakeDocker(
     },
     async logs() {
       calls.push("logs");
+      if (options.logsError) throw options.logsError;
       return output;
     },
     async remove() {
@@ -367,6 +373,47 @@ describe("DockerWorkspaceRuntime", () => {
     );
     assert.equal(failed.calls.at(-1), "remove-container");
   });
+
+  it("conserva el stderr de Git acotado y sin secretos al fallar el clon", async () => {
+    const docker = fakeDocker({
+      wait: Promise.resolve({ StatusCode: 128 }),
+      stderr: "x".repeat(10_000) + "\nfatal: clone-token ghs_abcdefghijklmnopqrstuvwxyz0123456789 " +
+        "https://user:password@example.com/repo: Could not resolve host: github.com",
+    });
+    await assert.rejects(
+      () => new DockerWorkspaceRuntime(config, docker.client).cloneRepository({
+        runId: "run-123", volumeName: "volume", owner: "octocat",
+        repository: "hello-world", branch: "main", token: "clone-token",
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof AppError);
+        assert.equal(error.code, "CLONE_FAILED");
+        const details = error.details as { exitCode: number; stderr: string };
+        assert.equal(details.exitCode, 128);
+        assert.ok(details.stderr.length <= 8_192);
+        assert.match(details.stderr, /Could not resolve host: github.com/);
+        assert.doesNotMatch(details.stderr, /clone-token|ghs_|password/);
+        assert.match(details.stderr, /\[REDACTADO\]/);
+        return true;
+      },
+    );
+    assert.equal(docker.calls.at(-1), "remove-container");
+  });
+
+  it("no pierde el codigo del clon si tambien falla la lectura de logs", async () => {
+    const docker = fakeDocker({
+      wait: Promise.resolve({ StatusCode: 128 }), logsError: new Error("logs unavailable"),
+    });
+    await assert.rejects(
+      () => new DockerWorkspaceRuntime(config, docker.client).cloneRepository({
+        runId: "run-123", volumeName: "volume", owner: "octocat",
+        repository: "hello-world", branch: "main", token: "clone-token",
+      }),
+      (error: unknown) => error instanceof AppError && error.code === "CLONE_FAILED" &&
+        (error.details as { exitCode: number }).exitCode === 128,
+    );
+    assert.equal(docker.calls.at(-1), "remove-container");
+  });
 });
 
 describe("DockerWorkspaceRuntime.publishBranch", () => {
@@ -434,11 +481,19 @@ describe("DockerWorkspaceRuntime.publishBranch", () => {
   });
 
   it("traduce una rama existente a PR_BRANCH_EXISTS", async () => {
-    const docker = fakeDocker({ wait: Promise.resolve({ StatusCode: 4 }) });
+    const docker = fakeDocker({
+      wait: Promise.resolve({ StatusCode: 4 }), stderr: "[rejected] publish-token already exists",
+    });
     const runtime = new DockerWorkspaceRuntime(config, docker.client);
     await assert.rejects(
       () => runtime.publishBranch(publishInput),
-      (error: unknown) => error instanceof AppError && error.code === "PR_BRANCH_EXISTS",
+      (error: unknown) => {
+        assert.ok(error instanceof AppError);
+        assert.equal(error.code, "PR_BRANCH_EXISTS");
+        assert.match((error.details as { stderr: string }).stderr, /already exists/);
+        assert.doesNotMatch(JSON.stringify(error.details), /publish-token/);
+        return true;
+      },
     );
     assert.equal(docker.calls.at(-1), "remove-container");
   });

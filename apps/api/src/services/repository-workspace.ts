@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import type { Config } from "../config.ts";
 import { AppError } from "../errors.ts";
+import { redactSecrets } from "../redact.ts";
 import type { GithubCloneRepository } from "./github-app.ts";
 import { assertPushTarget, PUBLISH_ALLOWLIST } from "./push-target.ts";
 
@@ -53,7 +54,7 @@ interface GitContainerInput {
   token: string;
   timeoutMs: number;
   timeoutError: AppError;
-  exitError: (exitCode: number) => AppError;
+  exitError: (exitCode: number, stderr?: string) => AppError;
   fallbackCode: string;
   fallbackMessage: string;
 }
@@ -233,8 +234,8 @@ export class DockerWorkspaceRuntime implements WorkspaceRuntime, PublishRuntime 
       token: input.token,
       timeoutMs: this.config.CLONE_TIMEOUT_MS,
       timeoutError: new AppError("CLONE_TIMEOUT", "El clonado excedio el tiempo limite.", 504),
-      exitError: (exitCode) =>
-        new AppError("CLONE_FAILED", "No se pudo clonar el repositorio.", 502, { exitCode }),
+      exitError: (exitCode, stderr) =>
+        new AppError("CLONE_FAILED", "No se pudo clonar el repositorio.", 502, { exitCode, stderr }),
       fallbackCode: "CLONE_FAILED",
       fallbackMessage: "No se pudo clonar el repositorio.",
     });
@@ -267,7 +268,7 @@ export class DockerWorkspaceRuntime implements WorkspaceRuntime, PublishRuntime 
       token: input.token,
       timeoutMs: this.config.PUBLISH_TIMEOUT_MS,
       timeoutError: new AppError("PUBLISH_TIMEOUT", "La publicacion de la rama excedio el tiempo limite.", 504),
-      exitError: (exitCode) => publishExitError(exitCode, input.headBranch),
+      exitError: (exitCode, stderr) => publishExitError(exitCode, input.headBranch, stderr),
       fallbackCode: "PUBLISH_FAILED",
       fallbackMessage: "No se pudo pushear la rama del PR.",
     });
@@ -392,12 +393,23 @@ export class DockerWorkspaceRuntime implements WorkspaceRuntime, PublishRuntime 
       ),
       streamError,
     ]);
-    const { stdout } = await this.dockerApiCall((abortSignal) =>
-      readContainerLogs(container, abortSignal),
-    );
-    if (result.StatusCode !== 0) throw input.exitError(result.StatusCode);
+    let logs: { stdout: Buffer; stderr: Buffer };
+    try {
+      logs = await this.dockerApiCall((abortSignal) => readContainerLogs(container, abortSignal));
+    } catch (error) {
+      // No ocultar el fallo de Git si tampoco se pudieron recuperar sus logs.
+      if (result.StatusCode !== 0) throw input.exitError(result.StatusCode);
+      throw error;
+    }
+    if (result.StatusCode !== 0) {
+      // Redactar ANTES de truncar para no dejar fragmentos de una credencial.
+      const stderr = redactSecrets(
+        logs.stderr.toString("utf8").split(input.token).join("[REDACTADO]"),
+      ).trim().slice(-8_192);
+      throw input.exitError(result.StatusCode, stderr || undefined);
+    }
 
-    return stdout
+    return logs.stdout
       .toString("utf8")
       .trim()
       .split(/\r?\n/)
@@ -443,14 +455,15 @@ export class DockerWorkspaceRuntime implements WorkspaceRuntime, PublishRuntime 
 }
 
 /** Codigos de salida de `publish.sh`: 3 rama prohibida, 4 rama existente. */
-function publishExitError(exitCode: number, headBranch: string): AppError {
+function publishExitError(exitCode: number, headBranch: string, stderr?: string): AppError {
+  const details = { exitCode, stderr };
   if (exitCode === 3) {
-    return new AppError("INVALID_PUSH_TARGET", "Se intento publicar en una rama no permitida.", 500);
+    return new AppError("INVALID_PUSH_TARGET", "Se intento publicar en una rama no permitida.", 500, details);
   }
   if (exitCode === 4) {
-    return new AppError("PR_BRANCH_EXISTS", `La rama ${headBranch} ya existe; no se pisa.`, 409);
+    return new AppError("PR_BRANCH_EXISTS", `La rama ${headBranch} ya existe; no se pisa.`, 409, details);
   }
-  return new AppError("PUBLISH_FAILED", "No se pudo pushear la rama del PR.", 502, { exitCode });
+  return new AppError("PUBLISH_FAILED", "No se pudo pushear la rama del PR.", 502, details);
 }
 
 function bufferSink(chunks: Buffer[]): Writable {
