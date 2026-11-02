@@ -8,7 +8,7 @@
 
 import { readFileSync } from "node:fs";
 
-export const AGENT_VERSION = "maintenance@1" as const;
+export const AGENT_VERSION = "maintenance@2" as const;
 
 export interface PromptContext {
   owner: string;
@@ -20,7 +20,7 @@ export interface PromptContext {
 }
 
 const PLANTILLA = readFileSync(
-  new URL("./prompts/maintenance.v1.md", import.meta.url),
+  new URL("./prompts/maintenance.v2.md", import.meta.url),
   "utf8",
 );
 

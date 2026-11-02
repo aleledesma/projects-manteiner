@@ -63,13 +63,30 @@ Es la fase con riesgo, así que las reglas son explícitas:
 3. Si un minor tiene breaking changes documentados (pasa: no todos respetan semver), **no
    entra** y se difiere con el motivo.
 4. Solo se tocan archivos de la allowlist de manifiestos/lockfiles ([04](./04-proveedores-ia-opencode.md)).
-   El resto está denegado a nivel de permisos de opencode.
+   Es una instrucción al agente; el publicador aplica el filtro efectivo. El runner permite shell y edición.
 5. El lockfile se regenera **sin ejecutar scripts de paquetes**
-   (`npm install --package-lock-only`). Ejecutar `npm install` completo correría código
-   arbitrario de terceros dentro del contenedor.
-6. Si no se puede regenerar el lockfile de forma segura, se actualiza solo el manifiesto y
-   se anota en `limitations`.
+   (en npm, `--ignore-scripts`, incluso con `--package-lock-only`).
+6. Manifiestos y lockfiles deben quedar coherentes. Si un candidato no puede resolverse,
+   se revierte solo ese candidato o grupo; no se publica un manifiesto incompatible con su lockfile.
 7. Toda actualización aplicada debe listar en qué evidencia se basó para considerarla segura.
+
+### Política activa desde `maintenance@2`
+
+El objetivo es **aplicar actualizaciones compatibles y terminar en una propuesta de PR**, no
+limitarse a inventariarlas. Se investigan primero los patches/minors del major actual, aunque
+`latest` apunte a otro major. Los paquetes relacionados se actualizan juntos, sin forzar peers.
+
+- La falta de tests, cobertura, CI, servicios o secretos **no bloquea el PR**. Se documenta
+  en `limitations` y en el cuerpo del PR, junto con las verificaciones realizadas y pendientes.
+- Se usan los checks disponibles, distinguiendo fallos preexistentes o del entorno de regresiones
+  nuevas. Un fallo nuevo atribuible a una actualización hace diferir **ese candidato o grupo**,
+  sin descartar los otros cambios compatibles.
+- La investigación es por candidato; no revisar todos los changelogs ni disponer de una suite
+  completa no justifica diferir todo el repositorio. No se promete ausencia absoluta de regresiones.
+- Se difieren majors, breaking changes y cambios que requieren migrar código; no se introducen
+  prereleases en dependencias estables y se evalúan especialmente los minors de versiones 0.x.
+- Si quedan actualizaciones aplicadas, `proposed_pull_request` debe ser un objeto con los
+  archivos reales. Solo queda `null` si no hay cambios; nunca se fuerza un PR vacío.
 
 ### Reglas de la fase 5 (investigación)
 
@@ -93,11 +110,14 @@ description: Auditoria de mantenimiento de repositorios
 mode: primary
 temperature: 0.1
 permission:
+  bash: allow
   read: allow
   glob: allow
   grep: allow
   list: allow
   webfetch: allow
+  edit: allow
+  write: allow
   external_directory: deny
 ---
 
@@ -106,13 +126,14 @@ permission:
 
 `temperature: 0.1` 🟡 — queremos consistencia y determinismo, no creatividad.
 
-## System prompt (v1)
+## System prompt activo (v2)
 
-> ⚠️ **La fuente de verdad es [`packages/contracts/src/prompts/maintenance.v1.md`](../packages/contracts/src/prompts/maintenance.v1.md)**,
-> no esta copia. El prompt se carga desde ahí en tiempo de ejecución y su versión
-> (`AGENT_VERSION = "maintenance@1"`) se congela en `runs.agent_version`.
+> **La fuente de verdad activa es [`packages/contracts/src/prompts/maintenance.v2.md`](../packages/contracts/src/prompts/maintenance.v2.md)**.
+> El prompt se carga desde ahí en tiempo de ejecución y su versión
+> (`AGENT_VERSION = "maintenance@2"`) se congela en `runs.agent_version`.
 >
-> Lo de abajo queda como referencia legible dentro del diseño. Si divergen, manda el archivo.
+> La v1 se conserva sin cambios para el histórico. El extracto siguiente corresponde a esa
+> **v1 archivada**, no a las instrucciones actuales; para la política activa leer la v2 enlazada.
 
 ```
 Sos un auditor de mantenimiento de software. Tu trabajo es evaluar el estado de
@@ -191,9 +212,9 @@ Al terminar devolves UN solo objeto JSON que cumpla el schema provisto.
   para poder comparar el mismo hallazgo entre auditorias sucesivas.
 ```
 
-🟡 El prompt se versiona en `packages/contracts/prompts/maintenance@1.md` y su versión se
-guarda en `runs.agent_version`. Cambiar el prompt sin versionarlo rompe la comparabilidad
-del histórico.
+El prompt se versiona en `packages/contracts/src/prompts/maintenance.vN.md` y su versión se
+guarda en `runs.agent_version`. No se modifican las plantillas históricas al introducir una
+política nueva. El contrato JSON sigue en su versión actual: este cambio es de comportamiento.
 
 ## Contrato de salida — JSON Schema
 

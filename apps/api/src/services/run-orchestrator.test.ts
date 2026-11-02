@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 
+import { AGENT_VERSION } from "@manteiner/contracts";
 import { validReport } from "@manteiner/contracts/fixtures";
 
 import { openDatabase, type DatabaseConnection } from "../db/client.ts";
@@ -283,6 +284,53 @@ describe("RunOrchestratorService", () => {
     assert.equal(fila["pr_branch"], "manteiner/maintenance/abcdef12");
     assert.equal(JSON.parse(fila["result_json"] as string).pullRequest.status, "created");
   });
+
+  for (const limitacion of [
+    "No existe una suite de tests ni CI en el repositorio.",
+    "El build ya fallaba antes de actualizar por falta de credenciales de base de datos.",
+  ]) {
+    it(`publica los cambios compatibles aunque haya una limitacion: ${limitacion}`, async () => {
+      const { database, credentials } = preparar();
+      conPreferencia(database, null);
+      const report = validReport({ limitations: [limitacion] });
+      let publicaciones = 0;
+      const prs = {
+        async publish() {
+          publicaciones++;
+          return {
+            status: "created",
+            number: 8,
+            url: "https://github.com/one/repo/pull/8",
+            branch: "manteiner/maintenance/abcdef12",
+            commitSha: "c".repeat(40),
+            files: report.proposed_pull_request!.files_changed,
+            discarded: [],
+          } satisfies PullRequestOutcome;
+        },
+      } as unknown as PullRequestService;
+      const service = new RunOrchestratorService(
+        database,
+        workspaceFalso({ destruido: false }),
+        agenteFalso({ structured: report, diff: "diff --git a/package.json b/package.json\n" }),
+        credentials,
+        new RunEventBus(database),
+        Date.now,
+        undefined,
+        prs,
+      );
+
+      const run = await (await service.start({ userId: "user-1", repositoryId: REPO_ID })).finished;
+      assert.equal(run.status, "succeeded");
+      assert.equal(publicaciones, 1);
+      const fila = database.sqlite
+        .prepare("SELECT agent_version, result_json FROM runs WHERE id = ?")
+        .get(run.id) as { agent_version: string; result_json: string };
+      const result = JSON.parse(fila.result_json);
+      assert.equal(fila.agent_version, AGENT_VERSION);
+      assert.equal(result.pullRequest.status, "created");
+      assert.deepEqual(result.report.limitations, [limitacion]);
+    });
+  }
 
   it("un PR fallido no invalida la auditoria", async () => {
     const { database, credentials } = preparar();
