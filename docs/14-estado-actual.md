@@ -43,29 +43,95 @@ También está implementado el endurecimiento automatizable. La próxima feature
 
 ```bash
 npm ci                        # con Node >= 22.12 activo
-npm test                      # revalidar después de preparar el entorno
+npm test                      # 187/187 (123 API + 8 runner + 56 contracts)
 npm run typecheck              # verificado limpio el 2026-11-02
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
-**Estado de la verificación local (2026-11-02):** `npm run typecheck` pasa. No se pudo
-revalidar la suite completa: el Node activo usa ABI 115 (Node 20, menor al mínimo del proyecto),
-mientras que `better-sqlite3` instalado fue compilado con ABI 137. Además, `npm test` no expande
-el glob `src/**/*.test.ts` con ese runtime en Windows. Enumerando los archivos explícitamente
-se ejecutó la suite de API, pero falló por la incompatibilidad nativa. Usar Node compatible y
-reinstalar dependencias antes de repetir las pruebas; no se modificó el entorno para este handoff.
-El registro anterior de **179/179 tests (119 API + 8 runner + 52 contracts)** es histórico,
-no una ejecución exitosa de esta revisión.
+### Estado de verificación
+
+**Última verificación local (2026-11-02, `maintenance@2`):** con Node **24.15.0**, pasan
+**187/187 tests (123 API + 8 runner + 56 contracts)** y el typecheck de todos los workspaces.
+Se usaron `npm.cmd test` y `npm.cmd run typecheck` porque PowerShell bloquea `npm.ps1` por
+su política de ejecución; no se cambió esa política. Los tests nuevos cubren las instrucciones
+del prompt y publicación con limitaciones; no sustituyen una ejecución real del LLM.
+
+El bloqueo anterior se debía al Node **20.20.2** activo: además de la ABI incompatible de
+`better-sqlite3` y el glob de tests, no cargaba algunas variables existentes del `.env`.
+El mismo archivo valida completo con Node 24.15.0. No se cambiaron secretos ni fue necesario
+modificar el `.env`; ante la repetición del error, comprobar `node -v` y `nvm use 24.15.0`.
 
 ## Lo que sigue
 
+### Agente actualizado: `maintenance@2`
+
+La política activa ahora exige aplicar patches/minors compatibles y proponer un PR con los
+cambios reales. La falta de tests, CI, cobertura o servicios externos se documenta en el
+informe y PR; no bloquea actualizaciones por sí sola. Se difieren por candidato los breaking
+changes, migraciones de código o regresiones concretas, conservando los otros cambios.
+Si `latest` es otro major, también se busca una versión compatible del major actual.
+
+La fuente activa es `packages/contracts/src/prompts/maintenance.v2.md`; la v1 se conserva para
+el histórico y los nuevos runs guardan `maintenance@2`. No cambió el schema ni el filtro del
+publicador. El prompt se envía desde la API en cada run: reiniciar la API y lanzar una auditoría
+nueva alcanza, sin reconstruir imágenes. Los runs existentes no se reejecutan ni se modifican.
+
+### Diagnóstico de clonado (`CLONE_FAILED`, exit 128)
+
+El primer intento con `maintenance@2` falló antes de iniciar el agente. El runtime descartaba
+el stderr que ya había leído del contenedor y persistía solo `exitCode`; ese fallo de diagnóstico
+está corregido para clonado y publicación. Ahora se guarda el stderr de Git, redactando el token
+exacto y patrones de secretos antes de limitarlo a 8.192 caracteres. Si falla la lectura de logs,
+se conserva el código de salida original. Hay tests de redacción, límite y limpieza de recursos.
+
+Una prueba posterior de **solo clonado** del mismo repositorio funcionó (2.764 KB) y eliminó el
+workspace. No se lanzó un LLM ni un PR ni se alteró el run fallido. La causa del fallo original
+no se pudo recuperar porque el contenedor ya había sido eliminado; no asumir error de permisos
+o de red sin evidencia. Para un nuevo intento, reiniciar la API; no requiere rebuild de Docker.
+
+### Publicación de PR: imagen Git y contexto de build
+
+El run siguiente sí aplicó `sonner` 2.0.7 → 2.0.8 y propuso un PR, pero la imagen local
+`manteiner-git:0.1.0` era anterior a la publicación y no contenía `/usr/local/bin/publish.sh`.
+Se reprodujo el fallo de inicio del contenedor sin credenciales ni red: el push nunca llegó a GitHub.
+
+Al reconstruir se encontró otro defecto: `docker/git/.dockerignore` permitía solo `Dockerfile`
+y `clone.sh`, excluyendo `publish.sh` del contexto. Se agregó `!publish.sh`, se reconstruyó
+correctamente con `npm.cmd run docker:build:git` y se comprobó en la imagen que ambos scripts
+existen, son ejecutables y pasan `sh -n`. No se hizo push ni se reejecutó la auditoría.
+La próxima auditoría usará la imagen reconstruida; este rebuild es necesario para publicación,
+no por el cambio de prompt v2.
+
+### Revisión para publicación del repositorio
+
+Revisión del **2026-11-02**: el proyecto puede presentarse como trabajo de portfolio **en
+desarrollo**, no como servicio listo para producción. Publicar código y exponer una instancia
+son decisiones distintas. No se cambió la visibilidad del repositorio ni se hizo push.
+
+- Búsqueda por patrones comunes sobre todos los objetos alcanzables por refs Git locales:
+  676 objetos, 419 blobs; la única coincidencia fue un token ficticio de tests de redacción.
+  No se encontraron archivos `.env`, PEM, claves, SQLite, `data/` o `spikes/.out/` en el historial
+  consultado. Es una revisión acotada, no una certificación de ausencia de secretos; antes de
+  cambiar la visibilidad se recomienda un escáner dedicado sobre todos los refs remotos.
+- No hay `LICENSE` ni pipeline de CI. La licencia requiere elección del autor. Conviene agregar
+  capturas reales o una demo sin datos sensibles para el portfolio.
+- `npm audit --omit=dev --json` reportó **13 paquetes con avisos: 1 crítico, 4 altos,
+  6 moderados y 2 bajos**. Incluye Better Auth (crítico, [GHSA-965c-763c-88jm](https://github.com/advisories/GHSA-965c-763c-88jm)),
+  además de avisos en dependencias directas y transitivas. La aplicabilidad de cada aviso aún
+  debe evaluarse; no se actualizaron paquetes ni se ejecutó `audit fix`.
+- Se corrigieron afirmaciones desactualizadas de `docs/10-seguridad.md`: el agente permite
+  shell/lectura/escritura; la allowlist efectiva se aplica al publicar, no al editar dentro del agente.
+- El README ahora incluye propuesta de valor, stack, instalación completa y diagramas Mermaid,
+  además de estado, limitaciones y licencia pendiente. No se agregaron badges de CI ficticios.
+
 ### Verificaciones antes de cerrar v1
 
-1. Revalidar tests con Node y dependencias compatibles.
+1. Mantener Node y dependencias compatibles al revalidar (suite automatizada actual: 187/187).
 2. Ejecutar una auditoría real y comprobar SSE, reconexión/F5 y cierre del stream.
 3. Crear un PR real con la GitHub App autorizada para `contents` y `pull_requests` en Read & Write.
 4. Completar I9 (calibración del tamaño de clones) e I10 (token fuera de `inspect` y `/proc`).
 5. Probar un repo con prompt injection y recorrer los puntos manuales de [10](./10-seguridad.md).
+6. Evaluar y resolver los avisos de dependencias aplicables antes de exponer una instancia.
 
 ### Próxima feature: Fase 8 — PDF
 
@@ -220,7 +286,8 @@ packages/contracts/src/
   normalize.ts            Validaciones semanticas. NO destructivas: corrige y avisa.
   json-schema.ts          z.toJSONSchema() + variante estricta + medicion de tamaño.
   prompt.ts               Carga e interpola el prompt versionado.
-  prompts/maintenance.v1.md   <- FUENTE DE VERDAD del prompt (el doc 06 tiene una copia)
+  prompts/maintenance.v2.md   <- FUENTE DE VERDAD del prompt activo (maintenance@2)
+  prompts/maintenance.v1.md   Plantilla histórica conservada, no usada en nuevos runs.
   fixtures.ts             Informe de ejemplo valido, usado por los tests.
 
 spikes/src/

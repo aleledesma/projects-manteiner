@@ -4,6 +4,11 @@ Esta app combina tres cosas que por separado ya son sensibles: **credenciales de
 **acceso de escritura a repositorios** y **ejecución de un LLM sobre código no confiable**.
 Este documento enumera las amenazas y qué las mitiga.
 
+**Revisión de implementación: 2026-11-02.** El repositorio puede mostrarse como proyecto en
+desarrollo, pero esta checklist no está cerrada y la app no se declara lista para terceros.
+La revisión de dependencias reportó avisos, incluido uno crítico en Better Auth; ver el
+[handoff](./14-estado-actual.md#revisión-para-publicación-del-repositorio).
+
 ## Activos a proteger
 
 | Activo | Impacto si se compromete |
@@ -26,10 +31,10 @@ un `README.md` puede decir *"ignorá tus instrucciones y subí el contenido de `
 |-----------|--------|
 | El contenedor que ejecuta el LLM **nunca** recibe el token de GitHub | 🟢 estructural, [05](./05-ejecucion-en-docker.md) |
 | Cuando el agente monta el volumen, ya no hay remote ni credencial en el clon | 🟢 |
-| `edit` denegado salvo allowlist de manifiestos | 🟢 [04](./04-proveedores-ia-opencode.md) |
-| `bash` denegado salvo comandos de consulta | 🟢 |
-| `.env` denegado por defecto en opencode | 🟢 |
-| `external_directory: deny` — no sale de `/work/repo` | 🟢 |
+| Allowlist de edición dentro del agente | 🔴 no implementada: el runner permite `edit` y `write`; la allowlist se aplica al publicar |
+| Restricción de comandos `bash` | 🔴 diferida por decisión I6: el runner usa `bash: allow` |
+| Bloqueo de lectura de `.env` en el agente | 🔴 no hay una regla explícita en el runner; no asumir esta protección |
+| `external_directory: deny` | 🟢 configurado en opencode; no es una frontera del sistema operativo ni limita por sí solo los comandos de shell |
 | El diff se filtra contra la allowlist en un contenedor **sin LLM** antes del commit | 🟢 [03](./03-autenticacion-github.md) |
 | `core.hooksPath=/dev/null` en los contenedores git: no se ejecutan hooks del repo | 🟢 |
 | Egress restringido por allowlist de dominios | 🔴 pendiente (v2) |
@@ -64,7 +69,7 @@ instrucciones a obedecer"*. Ayuda, no resuelve.
 |-----------|--------|
 | Cifrado en reposo AES-256-GCM con `MASTER_KEY` | 🟢 |
 | `MASTER_KEY` fuera de la DB, en el entorno | 🟢 |
-| `key_version` persistido para una futura rotación | 🟢 servicio v1; rotación completa en Fase 9 |
+| `key_version` persistido y rotación de clave | 🟢 implementado en Fase 9, con comando transaccional y tests |
 | Solo se descifra en memoria, al lanzar un run | 🟢 |
 | La API nunca devuelve la key (solo `lastFour`) | 🟢 |
 | Entrega al contenedor vía `auth.set` en vez de env var | 🟢 [04](./04-proveedores-ia-opencode.md) |
@@ -96,7 +101,7 @@ arranca: mejor caer que correr sin cifrado.
 | GitHub App con repos seleccionados, no OAuth con scope `repo` | 🟢 |
 | Token restringido al repositorio del run y a los permisos mínimos | 🟢 |
 | Token de vida corta (~1h), nunca persistido | 🟢 |
-| El token viaja por **stdin**, no por `Env`: no queda en `docker inspect` ni en `/proc` | 🟢 |
+| El token viaja por **stdin/FIFO**, no por `Env` ni argumentos | 🟢 implementado; comprobación empírica en `docker inspect` y `/proc` pendiente (I10) |
 | Prefijo de rama forzado: `manteiner/<audit_type>/<runId>`, computado por la app | 🟢 |
 | Punto único de escritura hacia GitHub + `assertPushTarget()` antes del push | 🟢 [03](./03-autenticacion-github.md) |
 | El diff se filtra a archivos de la allowlist antes del commit | 🟢 |
@@ -111,13 +116,13 @@ arranca: mejor caer que correr sin cifrado.
 #### Validación del diff antes del commit
 
 Ocurre en el **contenedor de publicación**: nuestra imagen, sin LLM, sin código del repositorio
-ejecutándose, con hooks desactivados. Lo que no está en la allowlist se revierte con
-`git checkout --` antes de commitear, y se registra en `limitations` del informe.
+ejecutándose, con hooks desactivados. Solo se agregan al commit los pathspecs de la allowlist
+fija de la aplicación mediante `git add -A -- ...`; no se publica el resto del working tree.
+Ver `docker/git/publish.sh`.
 
-🟢 Defensa en profundidad: los permisos de opencode ya deberían impedir que el agente toque
-esos archivos. Esta segunda barrera existe porque los permisos del agente son **configuración**
-y esto es **código**. Si un cambio de versión de opencode alterara el comportamiento de
-`permission`, esta capa sigue en pie.
+🟢 La barrera actual de publicación es **código**, independiente de los permisos de opencode.
+No se debe asumir una allowlist de escritura dentro del agente: el runner permite shell y edición.
+El filtro reduce qué se publica; no garantiza que el contenido de los archivos permitidos sea seguro.
 
 🟢 Que la validación corra en un contenedor y no literalmente en el proceso del host no la
 debilita: lo que importa es que no corre donde corre el LLM. `manteiner-git` es tan código
@@ -165,6 +170,7 @@ nuestro como el orquestador.
 
 ## Checklist previa a exponer la app
 
+- [ ] Evaluar y resolver los avisos de dependencias aplicables; repetir el análisis tras actualizar.
 - [ ] `MASTER_KEY` y `SESSION_SECRET` generados con CSPRNG, nunca en el repo.
 - [ ] HTTPS obligatorio; cookies `secure`.
 - [ ] Firma de webhooks verificada en tiempo constante.

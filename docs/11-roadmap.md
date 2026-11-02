@@ -8,7 +8,9 @@ Cada fase es una conversación aparte: "construyamos la fase N".
 
 **Estado revisado el 2026-11-02:** el flujo principal y el endurecimiento automatizable están
 implementados. La próxima feature es la **Fase 8 (PDF)**; las pruebas reales de SSE/PRs y las
-verificaciones manuales de seguridad siguen pendientes. Una fase implementada no implica
+verificaciones manuales de seguridad siguen pendientes. La revisión para publicación también
+detectó avisos de dependencias, incluido uno crítico en Better Auth: evaluar y resolver los
+aplicables antes de exponer una instancia. Una fase implementada no implica
 aceptación integral cerrada. El detalle operativo está en [14](./14-estado-actual.md).
 
 ---
