@@ -1,17 +1,16 @@
 # 14 — Estado actual (handoff)
 
-**Fecha: 2026-09-17.** Punto de traspaso a otro agente. Este documento es el que hay que leer
+**Actualizado: 2026-11-02.** Punto de traspaso a otro agente. Este documento es el que hay que leer
 primero para retomar el trabajo.
 
 ---
 
 ## Resumen en una línea
 
-Fases 0, 1 y 2 cerradas. Fase 3 backend funcional y Fase 4 backend completa; el onboarding web
-(V2) ya está construido y las UI de repos y settings siguen diferidas. La API conecta OpenAI por
-device flow, cifra credenciales, refresca OAuth con rotación segura, obtiene catálogo mediante un
-contenedor opencode efímero, valida API keys y guarda la selección de modelo global o por
-repositorio. El siguiente trabajo backend es la Fase 5.
+El flujo principal ya está implementado: login GitHub, vinculación de repositorios, proveedores
+de IA, auditorías en Docker, dashboard, informe e histórico, progreso SSE y publicación de PRs.
+También está implementado el endurecimiento automatizable. La próxima feature es la **Fase 8
+(PDF)**; faltan verificaciones integrales reales de SSE/PRs y seguridad manual para cerrar v1.
 
 ## Qué está hecho y funcionando
 
@@ -20,70 +19,79 @@ repositorio. El siguiente trabajo backend es la Fase 5.
 | Planificación completa (docs 00-13) | ✅ | 5 revisiones registradas |
 | Fase 0 — spikes de verificación | ✅ cerrada | [13](./13-hallazgos-spike.md) |
 | Monorepo npm workspaces | ✅ | `apps/api`, `apps/web`, `packages/contracts`, `spikes` |
-| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | 66 tests |
-| `packages/contracts` | ✅ | 50 tests |
+| API Fastify + config + errores + logging + SQLite + cifrado + auth + Docker | ✅ | Suite automatizada; revalidación local bloqueada por entorno (ver abajo) |
+| `packages/contracts` | ✅ | Contrato y normalización con tests |
 | Contrato base verificado contra opencode real | ✅ | I5 cerrado; hardening posterior cubierto localmente |
 | Base de datos SQLite | ✅ | 15 tablas + 3 migraciones |
 | Cifrado AES-256-GCM | ✅ | IV aleatorio + AAD + 10 tests específicos |
 | Fase 2 — Better Auth + web mínima | ✅ cerrada | Smoke test real completado |
-| Fase 3 — GitHub App y repositorios | 🟡 | Backend, sync on-demand y clon real verificados; UI de repos aun diferida |
+| Fase 3 — GitHub App y repositorios | 🟡 | Backend, sync on-demand, clon real y UI implementados; I9/I10 pendientes |
 | Conexión Dockerode | ✅ | Detección local + `ping`/`version`; `/api/health` expone solo disponibilidad |
 | Token de clon por repositorio | ✅ | `contents: read`, un `repository_id`, sin caché; revocado tras clonar |
 | Imagen `manteiner-git` | ✅ | Build y clon real verificados; corre como UID 10001 |
 | Workspace efímero | ✅ | Tamaño previo + Dockerode + callback + limpieza real verificada |
-| Fase 4 — proveedores de IA | 🟡 | Backend completo; onboarding (V2) construido, UI de settings diferida |
+| Fase 4 — proveedores de IA | ✅ | Backend, onboarding (V2) y configuración (V7) implementados |
 | V2 — Onboarding web | ✅ | 3 pasos contra la API real; typecheck y build limpios |
 | V7 — Configuración web | 🟡 | Proveedores, modelo, catálogo, GitHub y cuenta; sin borrado de cuenta |
 | Fase 5 — Contenedor y agente | ✅ | Backend + UI: dashboard (V3), informe (V5) e histórico del repo |
 | Fase 6 — Streaming SSE | 🟡 | Bus, traductor, endpoint y vista en vivo (V4); sin verificar contra un run real |
-| Fase 7 — Pull Requests | ✅ | `publish.sh`, `assertPushTarget`, `POST /pulls` y UI; falta verificar contra un repo real |
+| Fase 7 — Pull Requests | 🟡 | `publish.sh`, `assertPushTarget`, `POST /pulls` y UI; falta verificar contra un repo real |
 | Fase 8 — PDF | 🔜 | Próxima feature |
-| Fase 9 — Endurecimiento | ✅ | Rate limit, cola de runs (2 simultáneos), redacción de secretos y rotación de `MASTER_KEY`; quedan verificaciones manuales |
+| Fase 9 — Endurecimiento | 🟡 | Rate limit, cola de runs (2 simultáneos), redacción de secretos y rotación de `MASTER_KEY`; quedan verificaciones manuales |
 
 **Comprobalo:**
 
 ```bash
-npm ci && npm test             # 179/179 (119 api + 8 runner + 52 contracts) — requiere Node >= 22.12
-npm run typecheck              # limpio
+npm ci                        # con Node >= 22.12 activo
+npm test                      # revalidar después de preparar el entorno
+npm run typecheck              # verificado limpio el 2026-11-02
 npm run dev                    # curl http://localhost:3001/api/health
 ```
 
-## Lo que sigue, en orden
+**Estado de la verificación local (2026-11-02):** `npm run typecheck` pasa. No se pudo
+revalidar la suite completa: el Node activo usa ABI 115 (Node 20, menor al mínimo del proyecto),
+mientras que `better-sqlite3` instalado fue compilado con ABI 137. Además, `npm test` no expande
+el glob `src/**/*.test.ts` con ese runtime en Windows. Enumerando los archivos explícitamente
+se ejecutó la suite de API, pero falló por la incompatibilidad nativa. Usar Node compatible y
+reinstalar dependencias antes de repetir las pruebas; no se modificó el entorno para este handoff.
+El registro anterior de **179/179 tests (119 API + 8 runner + 52 contracts)** es histórico,
+no una ejecución exitosa de esta revisión.
 
-### Próxima sesión: Fase 6 — streaming SSE
+## Lo que sigue
 
-El flujo está completo de punta a punta: se vincula un repositorio, se dispara la auditoría
-desde el dashboard, el agente corre en su contenedor y el informe se lee en la UI.
+### Verificaciones antes de cerrar v1
 
-Lo que sigue es reemplazar el polling por streaming:
+1. Revalidar tests con Node y dependencias compatibles.
+2. Ejecutar una auditoría real y comprobar SSE, reconexión/F5 y cierre del stream.
+3. Crear un PR real con la GitHub App autorizada para `contents` y `pull_requests` en Read & Write.
+4. Completar I9 (calibración del tamaño de clones) e I10 (token fuera de `inspect` y `/proc`).
+5. Probar un repo con prompt injection y recorrer los puntos manuales de [10](./10-seguridad.md).
 
-1. Traductor de eventos opencode → eventos de dominio.
-2. `run_events` + Event Bus con fan-out y `GET /api/runs/:id/events`.
-3. Sustituir el polling de `RepositoriesView` y `RunView` por un `EventSource`.
-4. La vista **V4 — Run en vivo** (diseño `02 Run en vivo.dc.html`) recién tiene sentido acá:
-   hoy no hay de dónde sacar el paso actual ni la herramienta en uso.
+### Próxima feature: Fase 8 — PDF
 
-Después, Fase 7 (Pull Requests) habilita el visor de diff (V8) y el chip de PR en las tarjetas.
+- Plantilla del informe según [08](./08-reportes-pdf.md).
+- Persistencia de `run_artifacts`, descarga autorizada y regeneración.
+- El informe web y el histórico ya existen: no hay que reconstruirlos.
 
-Lo que **no** hay que rehacer: runner, orquestador, limpieza de huérfanos, validación del
-structured output, dashboard, informe e histórico. Están implementados y con tests.
+### Implementado: no rehacer
 
-El onboarding (V2) ya está construido: cubre los tres pasos y aparece solo mientras `/api/me`
-reporte algo incompleto. Lo que sigue diferido es la UI de **configuración** (V7) y la de
-**repositorios** (V3/V9). La imagen base ya fue adelantada y verificada; no hay que reemplazarla
-por otro runtime.
+Runner, orquestador, limpieza de huérfanos, validación de structured output, onboarding,
+configuración, dashboard, informe, histórico, SSE y publicación de PRs están implementados.
+El onboarding aparece mientras `/api/me` reporte pasos incompletos. Configuración todavía no
+incluye borrado de cuenta. No confundir implementación con las verificaciones pendientes.
 
-I9 (calibración del tamaño) e I10 (comprobación de que el token no aparece en `/proc`) quedan
-diferidos hasta que el flujo de ejecución completo sea funcional; no bloquean el desarrollo actual.
+Los webhooks siguen diferidos: la sincronización de repositorios es on-demand. El resto del
+backlog post-v1 está en [11](./11-roadmap.md).
 
-Tampoco implementar ahora webhooks ni la UI definitiva de repositorios: ambas decisiones ya
-quedaron diferidas para priorizar el flujo funcional.
+### Último trabajo de producto y ramas
 
-### Últimos commits estables
+- `fce8cd9` (2026-10-20): rate limiting, cola de runs, redacción de secretos y rotación de `MASTER_KEY`.
+- `a2a88c7` (2026-10-20): publicación de ramas y apertura de PRs con actualizaciones del agente.
+- `d837baf` / `a9f5206` (2026-09-18): progreso en vivo por SSE y ajustes de los puntos de entrada.
 
-- `9833444 feat: sync GitHub repositories on demand`
-- `fcfeb52 feat: orchestrate ephemeral repository workspaces`
-- `eecf8a6 feat: add secure repository cloning image`
+La rama de integración es **`dev`**, que reúne el trabajo de `main`, `feat/agent-runner` y
+`feat/pull-requests`. Las ramas de features se conservan. Integrar y commitear no implica push:
+consultar `git status`, `git branch -vv` y los refs remotos para conocer la sincronización actual.
 
 ### Sincronización elegida
 
@@ -267,7 +275,7 @@ docker/agent/
 ## Comandos útiles
 
 ```bash
-npm test                                              # 116 tests
+npm test                                              # requiere Node/dependencias compatibles
 npm run typecheck
 npm run dev                                           # API en :3001
 npm run dev:web                                       # web en :5173

@@ -3,10 +3,12 @@
 Manteiner es una app de gestión de proyectos que conecta repositorios de GitHub y
 ejecuta **agentes de IA de mantenimiento** sobre ellos dentro de contenedores
 efímeros de Docker. El agente audita el repo, abre un PR con actualizaciones
-seguras, devuelve un JSON estructurado con lo que hizo y genera un reporte PDF.
+seguras y devuelve un JSON estructurado con lo que hizo. La exportación a PDF sigue pendiente.
 
-> Estado: **implementación**. Las Fases 0 y 1 están cerradas y la Fase 2 está implementada,
-> pendiente de una validación completa contra una OAuth App real de GitHub.
+> Estado al **2026-11-02**: flujo principal implementado, con auditorías en Docker, UI,
+> SSE y publicación de PRs. Próxima feature: **Fase 8 — PDF**. Antes de cerrar v1 quedan
+> verificaciones reales de SSE/PRs y seguridad manual. Consultá el
+> [estado actual](./14-estado-actual.md) y el [roadmap](./11-roadmap.md).
 
 ## Índice
 
@@ -27,6 +29,7 @@ seguras, devuelve un JSON estructurado con lo que hizo y genera un reporte PDF.
 | 12 | [Decisiones abiertas](./12-decisiones-abiertas.md) | Lo decidido y lo que falta decidir |
 | 13 | [Hallazgos de la Fase 0](./13-hallazgos-spike.md) | Qué confirmaron o refutaron los spikes |
 | **14** | **[Estado actual (handoff)](./14-estado-actual.md)** | **Empezá por acá para retomar el trabajo** |
+| 15 | [Diseño de UI](./15-diseno-ui.md) | Vistas, interacción y referencia visual |
 
 ## Cómo leer esto
 

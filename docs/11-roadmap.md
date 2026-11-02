@@ -6,6 +6,11 @@ bonita antes de saber si el agente dentro del contenedor funciona.
 
 Cada fase es una conversación aparte: "construyamos la fase N".
 
+**Estado revisado el 2026-11-02:** el flujo principal y el endurecimiento automatizable están
+implementados. La próxima feature es la **Fase 8 (PDF)**; las pruebas reales de SSE/PRs y las
+verificaciones manuales de seguridad siguen pendientes. Una fase implementada no implica
+aceptación integral cerrada. El detalle operativo está en [14](./14-estado-actual.md).
+
 ---
 
 ## Fase 0 — Verificación técnica (spike) ✅ CERRADA
@@ -97,7 +102,7 @@ contrato del agente es viable tal como está escrito.
 - [x] Smoke test completo contra una GitHub App real: instalación, listado y vinculación.
 - [x] Configuración y conexión a Docker Desktop con Dockerode; estado visible en `/api/health`.
 - [x] Token `contents: read` restringido por repo para clonado, sin caché ni persistencia.
-- [ ] Token restringido por repo para publicación (se implementa junto con los PR en Fase 7).
+- [x] Token restringido por repo para publicación (`contents: write`, `pull_requests: write`; Fase 7).
 - [x] Imagen `manteiner-git` + `clone.sh`, con token por stdin/FIFO y limpieza del remote.
 - [x] Chequeo de tamaño previo; volumen efímero; clon por Dockerode y limpieza en `finally`.
 - [x] Sincronización on-demand al listar repos; webhooks diferidos para después de v1.
@@ -133,7 +138,7 @@ la imagen base reproducible `manteiner-agent`; el runner y las auditorías sigue
 
 ---
 
-## Fase 5 — Contenedor y agente (el corazón) 🟡 BACKEND COMPLETO
+## Fase 5 — Contenedor y agente (el corazón) ✅ IMPLEMENTADA CON UI
 
 - [x] `docker/agent/Dockerfile` + build reproducible con versión pinneada de opencode. (Adelantado en Fase 4.)
 - [x] `packages/agent-runner`: genera config, genera el agente, levanta `opencode serve`.
@@ -153,9 +158,8 @@ la imagen base reproducible `manteiner-agent`; el runner y las auditorías sigue
 - [x] 3.5 — `dockerode` contra el named pipe de Docker Desktop en Windows. Cerrada por evidencia: clonado, catálogo, agente y limpieza corren por Dockerode sin configurar `DOCKER_SOCKET`.
 
 **Entregable:** `POST /api/repos/:id/runs` corre el agente de punta a punta y guarda
-`result_json`. Sin streaming ni PR todavía. ✅ Con el dashboard (V3), el informe (V5) y el
-histórico por repositorio; el run responde 202 y la UI sigue el estado por polling hasta que
-la Fase 6 traiga el SSE.
+`result_json`. ✅ Con el dashboard (V3), el informe (V5) y el histórico por repositorio.
+El run responde 202; las Fases 6 y 7 ya agregaron SSE y publicación de PRs a este flujo.
 
 ---
 
@@ -173,7 +177,7 @@ verificarlo contra un run real.
 
 ---
 
-## Fase 7 — Pull Requests ✅ IMPLEMENTADA
+## Fase 7 — Pull Requests 🟡 IMPLEMENTADA; VERIFICACIÓN REAL PENDIENTE
 
 - [x] `publish.sh` en la imagen `manteiner-git`: filtrado por allowlist, rama, commit, push.
 - [x] Aserción dura del destino del push (`assertPushTarget`) + test que intente pushear a `main` y falle.
@@ -212,11 +216,12 @@ El histórico y la UI del informe ya existen (Fase 5). Lo que queda pendiente es
 - [ ] Regeneración del PDF.
 - [x] UI del informe (tabs) y del histórico del repo. (Adelantada en la Fase 5.)
 
-**Entregable:** v1 completa.
+**Entregable:** exportación PDF completa. El cierre de v1 también requiere las verificaciones
+pendientes de las Fases 3, 6, 7 y 9.
 
 ---
 
-## Fase 9 — Endurecimiento ✅ IMPLEMENTADA (lo automatizable)
+## Fase 9 — Endurecimiento 🟡 IMPLEMENTADO LO AUTOMATIZABLE
 
 - [x] Rate limiting por usuario con `@fastify/rate-limit` (ver tabla abajo).
 - [x] Límite de runs simultáneos con cola in-process (`MAX_CONCURRENT_RUNS=2`, `MAX_QUEUED_RUNS=10`).
