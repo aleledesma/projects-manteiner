@@ -26,31 +26,33 @@ control de las credenciales de escritura de GitHub.
 
 - **Conexión con GitHub:** login OAuth, instalación de GitHub App y selección de repositorios.
 - **Tu proveedor de IA:** OpenAI con cuenta ChatGPT mediante device flow, o proveedores con
-  API key compatibles con el runtime; catálogo y selección de modelo global o por repositorio.
+API key compatibles con el runtime; catálogo y selección de modelo global o por repositorio.
 - **Auditorías aisladas:** clon y ejecución en un volumen efímero de Docker, con límites de
-  recursos, timeouts y limpieza al finalizar.
+recursos, timeouts y limpieza al finalizar.
 - **Progreso en vivo:** eventos SSE persistidos, replay y reconexión desde la interfaz.
 - **Informes estructurados:** JSON validado, hallazgos, recomendaciones, diff e histórico por repo.
 - **PRs revisables:** publicación de archivos permitidos en ramas `manteiner/*`, sin push a la
-  rama por defecto ni merge automático.
-  El agente aplica patches/minors compatibles aunque el repo no tenga tests o CI; las
-  limitaciones de validación se informan en el PR. Los breaking changes se difieren.
+rama por defecto ni merge automático.
+El agente aplica patches/minors compatibles aunque el repo no tenga tests o CI; las
+limitaciones de validación se informan en el PR. Los breaking changes se difieren.
 - **Controles operativos:** credenciales cifradas, redacción de secretos, rate limiting y cola
-  de auditorías con concurrencia acotada.
+de auditorías con concurrencia acotada.
 
 Las funcionalidades implementadas no equivalen a una versión estable: ver las
 [validaciones pendientes](#estado-y-roadmap).
 
 ## Stack
 
-| Capa | Tecnologías |
-|------|-------------|
-| Frontend | React, TypeScript, Vite, Tailwind CSS |
-| API | Node.js, Fastify, Better Auth |
-| Persistencia | SQLite, Drizzle ORM |
-| Contratos | Zod y JSON Schema |
+
+| Capa                 | Tecnologías                                            |
+| -------------------- | ------------------------------------------------------ |
+| Frontend             | React, TypeScript, Vite, Tailwind CSS                  |
+| API                  | Node.js, Fastify, Better Auth                          |
+| Persistencia         | SQLite, Drizzle ORM                                    |
+| Contratos            | Zod y JSON Schema                                      |
 | Ejecución de agentes | Docker, Dockerode, opencode, runner TypeScript con Bun |
-| Integración | GitHub OAuth, GitHub App, SSE |
+| Integración          | GitHub OAuth, GitHub App, SSE                          |
+
 
 ## Arquitectura
 
@@ -134,12 +136,12 @@ y registrar su motivo. Un destino de push inválido, en cambio, detiene el run.
 
 - **Separación de privilegios:** el LLM no comparte contenedor con los tokens de GitHub.
 - **Contrato compartido:** `packages/contracts` define el informe con Zod y deriva el JSON Schema
-  y los tipos; la validación no depende de extraer JSON desde prosa.
+y los tipos; la validación no depende de extraer JSON desde prosa.
 - **Normalización no destructiva:** las inconsistencias corregibles generan advertencias en
-  lugar de descartar toda la auditoría.
+lugar de descartar toda la auditoría.
 - **Eventos persistidos antes de emitirse:** la UI puede recuperar progreso tras reconectarse.
 - **Un solo proceso:** SQLite, cola y rate limits en memoria simplifican el uso local;
-  no se presenta como una arquitectura distribuida.
+no se presenta como una arquitectura distribuida.
 
 Las alternativas y sus motivos están documentados en
 [arquitectura](./docs/01-arquitectura.md) y [decisiones](./docs/12-decisiones-abiertas.md).
@@ -152,7 +154,7 @@ Las alternativas y sus motivos están documentados en
 - **Docker** con el daemon activo; Docker Desktop en Windows.
 - Una **GitHub OAuth App** para login y una **GitHub App** para acceso a repositorios.
 - Una credencial de un proveedor de IA compatible. El uso puede generar costos o consumir
-  la cuota de tu suscripción.
+la cuota de tu suscripción.
 
 ### 1. Obtener el proyecto
 
@@ -176,13 +178,15 @@ uno para `MASTER_KEY` y otro para `SESSION_SECRET`, ejecutando este comando una 
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-| Integración | Configuración local |
-|-------------|---------------------|
-| GitHub OAuth App | Callback: `http://localhost:3001/api/auth/callback/github` |
-| GitHub App | Setup URL: `http://localhost:3001/api/github/setup` |
-| GitHub App: repositorios | `metadata: read`, `contents: read & write`, `pull requests: read & write` |
-| GitHub App: organizaciones | `members: read` para verificar administración de instalaciones |
-| Clave privada de GitHub App | PEM codificado en base64 en `GITHUB_APP_PRIVATE_KEY_BASE64` |
+
+| Integración                 | Configuración local                                                       |
+| --------------------------- | ------------------------------------------------------------------------- |
+| GitHub OAuth App            | Callback: `http://localhost:3001/api/auth/callback/github`                |
+| GitHub App                  | Setup URL: `http://localhost:3001/api/github/setup`                       |
+| GitHub App: repositorios    | `metadata: read`, `contents: read & write`, `pull requests: read & write` |
+| GitHub App: organizaciones  | `members: read` para verificar administración de instalaciones            |
+| Clave privada de GitHub App | PEM codificado en base64 en `GITHUB_APP_PRIVATE_KEY_BASE64`               |
+
 
 El [detalle de autenticación y permisos](./docs/03-autenticacion-github.md) explica por qué hay
 dos integraciones. Los webhooks no son necesarios: la sincronización es on-demand.
@@ -212,9 +216,9 @@ npm run dev
 npm run dev:web
 ```
 
-- Web: <http://localhost:5173>
-- API: <http://localhost:3001>
-- Healthcheck: <http://localhost:3001/api/health>
+- Web: [http://localhost:5173](http://localhost:5173)
+- API: [http://localhost:3001](http://localhost:3001)
+- Healthcheck: [http://localhost:3001/api/health](http://localhost:3001/api/health)
 
 SQLite se inicializa y aplica migraciones al arrancar la API. Docker apagado no impide iniciar
 sesión ni administrar repositorios, pero sí ejecutar auditorías.
@@ -229,17 +233,19 @@ sesión ni administrar repositorios, pero sí ejecutar auditorías.
 
 ## Desarrollo y verificación
 
-| Comando | Descripción |
-|---------|-------------|
-| `npm run dev` | API en modo watch |
-| `npm run dev:web` | Frontend en modo desarrollo |
-| `npm run typecheck` | Verificación de tipos de los workspaces |
-| `npm test` | Suite de tests de los workspaces |
-| `npm run build` | Build de los workspaces que lo requieren |
-| `npm run docker:build:git` | Imagen para clonado y publicación |
-| `npm run docker:build:agent` | Imagen del agente y catálogo |
-| `npm run print-schema --workspace @manteiner/contracts` | JSON Schema del informe |
-| `npm run db:generate --workspace @manteiner/api` | Generar migraciones tras modificar el schema |
+
+| Comando                                                 | Descripción                                  |
+| ------------------------------------------------------- | -------------------------------------------- |
+| `npm run dev`                                           | API en modo watch                            |
+| `npm run dev:web`                                       | Frontend en modo desarrollo                  |
+| `npm run typecheck`                                     | Verificación de tipos de los workspaces      |
+| `npm test`                                              | Suite de tests de los workspaces             |
+| `npm run build`                                         | Build de los workspaces que lo requieren     |
+| `npm run docker:build:git`                              | Imagen para clonado y publicación            |
+| `npm run docker:build:agent`                            | Imagen del agente y catálogo                 |
+| `npm run print-schema --workspace @manteiner/contracts` | JSON Schema del informe                      |
+| `npm run db:generate --workspace @manteiner/api`        | Generar migraciones tras modificar el schema |
+
 
 Usá la misma versión compatible de Node para instalar y ejecutar: `better-sqlite3` incluye un
 módulo nativo y debe reinstalarse si cambia la ABI de Node. El estado de la última verificación
@@ -258,14 +264,14 @@ archivos a publicar, validación del destino del push y redacción de secretos e
 Limitaciones que importan antes de usarlo:
 
 - El agente tiene `bash`, lectura y escritura habilitados, y salida a internet. Docker reduce
-  exposición, pero **no elimina prompt injection, escape ni exfiltración**. No audites código
-  sensible sin evaluar estos riesgos.
+exposición, pero **no elimina prompt injection, escape ni exfiltración**. No audites código
+sensible sin evaluar estos riesgos.
 - El código analizado puede enviarse al proveedor de IA elegido; aplican sus políticas de datos.
 - La cola y los rate limits viven en memoria de un único proceso; no son persistentes ni distribuidos.
 - Hay verificaciones manuales pendientes y **avisos de vulnerabilidades en dependencias**
-  detectados el 2026-11-02. Requieren evaluación y actualización antes de exponer una instancia.
+detectados el 2026-11-02. Requieren evaluación y actualización antes de exponer una instancia.
 - No hay garantía de corrección de las recomendaciones ni de las actualizaciones propuestas.
-  Revisá siempre el diff y ejecutá los tests del repositorio auditado.
+Revisá siempre el diff y ejecutá los tests del repositorio auditado.
 
 Para un eventual despliegue, web y `/api` deben compartir origen, detrás de HTTPS y un reverse
 proxy. Los servidores de desarrollo no son un despliegue de producción.
@@ -275,15 +281,17 @@ Consultá el [modelo de amenazas y checklist](./docs/10-seguridad.md) y el
 
 ## Estado y roadmap
 
-| Área | Estado |
-|------|--------|
-| Login, GitHub App y repositorios | Implementado; verificaciones de tamaño y transporte de tokens pendientes |
-| Proveedores de IA, onboarding y configuración | Implementado |
-| Runner Docker, dashboard, informe e histórico | Implementado |
-| Progreso SSE y reconexión | Implementado; validación integral con run real pendiente |
-| Publicación de Pull Requests | Implementado; validación contra un repositorio real pendiente |
-| Exportación PDF | Pendiente: próxima feature |
-| Endurecimiento | Controles automatizables implementados; dependencias y pruebas manuales pendientes |
+
+| Área                                          | Estado                                                                             |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Login, GitHub App y repositorios              | Implementado; verificaciones de tamaño y transporte de tokens pendientes           |
+| Proveedores de IA, onboarding y configuración | Implementado                                                                       |
+| Runner Docker, dashboard, informe e histórico | Implementado                                                                       |
+| Progreso SSE y reconexión                     | Implementado; validación integral con run real pendiente                           |
+| Publicación de Pull Requests                  | Implementado; validación contra un repositorio real pendiente                      |
+| Exportación PDF                               | Pendiente: próxima feature                                                         |
+| Endurecimiento                                | Controles automatizables implementados; dependencias y pruebas manuales pendientes |
+
 
 **Para cerrar v1:** validar el flujo real, resolver avisos de dependencias aplicables,
 completar la checklist de seguridad e implementar generación, descarga y regeneración de PDF.
@@ -317,16 +325,3 @@ spikes/                 Verificaciones técnicas previas a la implementación
 - [Seguridad](./docs/10-seguridad.md)
 - [Roadmap](./docs/11-roadmap.md)
 - [Decisiones y alternativas](./docs/12-decisiones-abiertas.md)
-
-## Feedback y contribuciones
-
-Las [issues](https://github.com/aleledesma/projects-manteiner/issues) pueden usarse para reportar
-errores o proponer mejoras. Incluí pasos de reproducción y versiones del entorno, pero nunca
-credenciales, código privado ni logs sin revisar. Para cambios de alcance o arquitectura,
-abrí primero una discusión en una issue. La rama de integración es **`dev`**.
-
-## Licencia
-
-Este repositorio **todavía no tiene una licencia de código abierto definida**. Hacerlo público
-permite consultar el código, pero no concede por sí solo una licencia general para reutilizarlo,
-modificarlo o redistribuirlo. La elección y publicación de una licencia está pendiente.
